@@ -1,0 +1,6 @@
+LIBRARY
+EXPORTS
+	DetourFinishHelperProcess @1
+	ManagedToNativeTestFunc
+	DllCanUnloadNow PRIVATE
+	DllGetClassObject PRIVATE
