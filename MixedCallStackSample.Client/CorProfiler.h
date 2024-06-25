@@ -132,6 +132,11 @@ namespace MixedCallStackSampleClient
 		CString GetFunctionName(FunctionID funcId);
 		CString GetClassIDName(ClassID classId);
 		void ReleaseProfilerInfo();
+		std::list<PVOID> GetNativeFrames(
+			const HANDLE processHandle,
+			const HANDLE threadHandle,
+			const PCONTEXT context
+		) const;
 
 	private:
 		static HRESULT __stdcall DoStackSnapshotCallback(FunctionID funcId,

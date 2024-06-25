@@ -583,6 +583,7 @@ namespace MixedCallStackSampleClient
 
 	void CorProfiler::GetMixedCallStack(const PCONTEXT context)
 	{
+		const auto processHandle = GetCurrentProcess();
 		const auto nativeThreadHandle = GetCurrentThread();
 		const auto nativeThreadID = GetCurrentThreadId();
 
@@ -595,34 +596,19 @@ namespace MixedCallStackSampleClient
 			return;
 		}
 
-		const auto ipStack = NativeStackWalker::GetIPStack(nativeThreadHandle, context);
-
-		std::map<DWORD64, FunctionID> managedIPs;
-		for (auto ip : ipStack)
-		{
-			FunctionID managedFunction = 0;
-			HRESULT funcResult = _profilerInfo->GetFunctionFromIP(reinterpret_cast<BYTE*>(ip), &managedFunction);
-			if (SUCCEEDED(funcResult) && managedFunction != 0)
-				managedIPs[ip] = managedFunction;
-		}
-
-		if (managedIPs.size() == 0)
-		{
-			// TODO:
-			// For some reason, many of the resulting mixed call stacks
-			// do not contain managed functions...
-			OutputDebugString(_T("managedIPs is empty!"));
-		}
-
-		// Let's try to create annotations for all IPs
-		std::list<CString> annotationStack;
-		NativeStackWalker::AnnotateStack(ipStack, annotationStack);
+		const auto nativeFrames = GetNativeFrames(processHandle, nativeThreadHandle, context);
 
 		// TODO:
-		// As we usually see, only a portion of the frames were annotated.
-		// Perhaps the rest is managed (or not?)
+		// For some reason, in most cases the `nativeFrames` collection is wrong.
+		// Despite the fact that I provided for the StackWalk64 traversal loop
+		// to break when it encounters the first managed frame (in GetNativeFrames() function),
+		// the managed frame is often not encountered at all, allowing all iterations
+		// of StackWalk64 to go through.
+		// This is definitely wrong.
+		// This is especially noticeable when the Main function of the profiled application
+		// has already been called, and we have a call stack with guaranteed managed frames
+		// (which can be seen in the CallStack Window in Visual Studio).
 
-		// Okay, let's go through the frames provided by 'DoStackSnapshot'
 		const auto stackFrames = new std::vector<StackFrame>();
 		const HRESULT result = _profilerInfo->DoStackSnapshot(
 			managedThreadID,
@@ -641,7 +627,7 @@ namespace MixedCallStackSampleClient
 			// What is the correct way to traverse the stack
 			// and find managed frames and then combine them with unmanaged frames?
 
-			ExpandNativeFrames(nativeThreadHandle, ipStack, *stackFrames);
+			// ExpandNativeFrames(nativeThreadHandle, ipStack, *stackFrames);
 		}
 		else
 		{
@@ -860,6 +846,80 @@ namespace MixedCallStackSampleClient
 			_profilerInfo->Release();
 			_profilerInfo = nullptr;
 		}
+	}
+
+	std::list<PVOID> CorProfiler::GetNativeFrames(
+		const HANDLE processHandle,
+		const HANDLE threadHandle,
+		const PCONTEXT context
+	) const
+	{
+		std::list<PVOID> stackFrames;
+
+		if (threadHandle == nullptr ||
+			threadHandle == INVALID_HANDLE_VALUE)
+			return stackFrames;
+
+		DWORD image;
+		STACKFRAME64 stackFrame;
+		ZeroMemory(&stackFrame, sizeof(STACKFRAME64));
+
+#ifdef _M_IX86
+		image = IMAGE_FILE_MACHINE_I386;
+		stackFrame.AddrPC.Offset = context->Eip;
+		stackFrame.AddrPC.Mode = AddrModeFlat;
+		stackFrame.AddrFrame.Offset = context->Ebp;
+		stackFrame.AddrFrame.Mode = AddrModeFlat;
+		stackFrame.AddrStack.Offset = context->Esp;
+		stackFrame.AddrStack.Mode = AddrModeFlat;
+#elif _M_X64
+		image = IMAGE_FILE_MACHINE_AMD64;
+		stackFrame.AddrPC.Offset = context->Rip;
+		stackFrame.AddrPC.Mode = AddrModeFlat;
+		stackFrame.AddrFrame.Offset = context->Rbp;
+		stackFrame.AddrFrame.Mode = AddrModeFlat;
+		stackFrame.AddrStack.Offset = context->Rsp;
+		stackFrame.AddrStack.Mode = AddrModeFlat;
+#elif _M_IA64
+		image = IMAGE_FILE_MACHINE_IA64;
+		stackFrame.AddrPC.Offset = context->StIIP;
+		stackFrame.AddrPC.Mode = AddrModeFlat;
+		stackFrame.AddrFrame.Offset = context->IntSp;
+		stackFrame.AddrFrame.Mode = AddrModeFlat;
+		stackFrame.AddrBStore.Offset = context->RsBSP;
+		stackFrame.AddrBStore.Mode = AddrModeFlat;
+		stackFrame.AddrStack.Offset = context->IntSp;
+		stackFrame.AddrStack.Mode = AddrModeFlat;
+#else
+#error "Platform not supported!"
+#endif
+
+		CONTEXT newContext;
+		memcpy(&newContext, context, sizeof(CONTEXT));
+
+		while (StackWalk64(
+			image,
+			processHandle,
+			threadHandle,
+			&stackFrame,
+			&newContext,
+			nullptr,
+			SymFunctionTableAccess64,
+			SymGetModuleBase64,
+			nullptr
+		))
+		{
+			const DWORD64 ip = stackFrame.AddrPC.Offset;
+
+			FunctionID managedFunction = 0;
+			HRESULT funcResult = _profilerInfo->GetFunctionFromIP(reinterpret_cast<BYTE*>(ip), &managedFunction);
+			if (SUCCEEDED(funcResult) && managedFunction != 0)
+				break;
+
+			stackFrames.push_back(reinterpret_cast<PVOID>(stackFrame.AddrPC.Offset));
+		}
+
+		return stackFrames;
 	}
 
 	HRESULT __stdcall CorProfiler::DoStackSnapshotCallback(

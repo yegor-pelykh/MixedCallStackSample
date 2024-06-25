@@ -45,62 +45,6 @@ namespace MixedCallStackSampleClient
 		return callerModuleHandle == currentModuleHandle;
 	}
 
-	std::list<DWORD64> NativeStackWalker::GetIPStack(const HANDLE threadHandle, const PCONTEXT context)
-	{
-		std::list<DWORD64> stackFrames;
-
-		if (!_isSymLoaded)
-			return stackFrames;
-
-		if (threadHandle == INVALID_HANDLE_VALUE)
-			return stackFrames;
-
-		DWORD image;
-		STACKFRAME64 stackFrame;
-		ZeroMemory(&stackFrame, sizeof(STACKFRAME64));
-
-#ifdef _M_IX86
-		image = IMAGE_FILE_MACHINE_I386;
-		stackFrame.AddrPC.Offset = context->Eip;
-		stackFrame.AddrPC.Mode = AddrModeFlat;
-		stackFrame.AddrFrame.Offset = context->Ebp;
-		stackFrame.AddrFrame.Mode = AddrModeFlat;
-		stackFrame.AddrStack.Offset = context->Esp;
-		stackFrame.AddrStack.Mode = AddrModeFlat;
-#elif _M_X64
-		image = IMAGE_FILE_MACHINE_AMD64;
-		stackFrame.AddrPC.Offset = context->Rip;
-		stackFrame.AddrPC.Mode = AddrModeFlat;
-		stackFrame.AddrFrame.Offset = context->Rbp;
-		stackFrame.AddrFrame.Mode = AddrModeFlat;
-		stackFrame.AddrStack.Offset = context->Rsp;
-		stackFrame.AddrStack.Mode = AddrModeFlat;
-#elif _M_IA64
-		image = IMAGE_FILE_MACHINE_IA64;
-		stackFrame.AddrPC.Offset = context->StIIP;
-		stackFrame.AddrPC.Mode = AddrModeFlat;
-		stackFrame.AddrFrame.Offset = context->IntSp;
-		stackFrame.AddrFrame.Mode = AddrModeFlat;
-		stackFrame.AddrBStore.Offset = context->RsBSP;
-		stackFrame.AddrBStore.Mode = AddrModeFlat;
-		stackFrame.AddrStack.Offset = context->IntSp;
-		stackFrame.AddrStack.Mode = AddrModeFlat;
-#else
-#error "Platform not supported!"
-#endif
-
-		CONTEXT newContext;
-		memcpy(&newContext, context, sizeof(CONTEXT));
-
-		while (StackWalk64(image, _processHandle, threadHandle, &stackFrame, &newContext,
-			nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr))
-		{
-			stackFrames.push_back(stackFrame.AddrPC.Offset);
-		}
-		
-		return stackFrames;
-	}
-
 	HRESULT NativeStackWalker::AnnotateStack(const std::list<DWORD64>& ipStack, std::list<CString>& annotationStack)
 	{
 		if (!_isSymLoaded)
