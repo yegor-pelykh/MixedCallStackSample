@@ -872,23 +872,20 @@ namespace MixedCallStackSampleClient
 	)
 	{
 		auto stackFrames = static_cast<std::vector<StackFrame>*>(clientData);
-		auto contextData = reinterpret_cast<CONTEXT&>(context);
-
-		// TODO:
-		// Why is the context of each frame always the same?
+		auto contextData = reinterpret_cast<CONTEXT*>(context);
 
 #ifdef _M_IX86
-		DWORD64 addrPC = contextData.Eip;
-		DWORD64 addrFrame = contextData.Ebp;
-		DWORD64 addrStack = contextData.Esp;
+		DWORD64 addrPC = contextData->Eip;
+		DWORD64 addrFrame = contextData->Ebp;
+		DWORD64 addrStack = contextData->Esp;
 #elif _M_X64
 		DWORD64 addrPC = ip;
-		DWORD64 addrFrame = contextData.Rbp;
-		DWORD64 addrStack = contextData.Rsp;
+		DWORD64 addrFrame = contextData->Rbp;
+		DWORD64 addrStack = contextData->Rsp;
 #elif _M_IA64
-		DWORD64 addrPC = contextData.StIIP;
-		DWORD64 addrFrame = contextData.IntSp;
-		DWORD64 addrStack = contextData.RsBSP;
+		DWORD64 addrPC = contextData->StIIP;
+		DWORD64 addrFrame = contextData->IntSp;
+		DWORD64 addrStack = contextData->RsBSP;
 #else
 #error "Platform not supported!"
 #endif
