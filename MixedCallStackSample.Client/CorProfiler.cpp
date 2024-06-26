@@ -596,7 +596,15 @@ namespace MixedCallStackSampleClient
 			return;
 		}
 
-		const auto nativeFrames = GetNativeFrames(processHandle, nativeThreadHandle, context);
+		DWORD64 firstManagedIP = 0;
+		FunctionID firstManagedFuncID = 0;
+		const auto nativeFrames = GetNativeFrames(
+			processHandle,
+			nativeThreadHandle,
+			context,
+			firstManagedIP,
+			firstManagedFuncID
+		);
 
 		// TODO:
 		// For some reason, in most cases the `nativeFrames` collection is wrong.
@@ -851,9 +859,14 @@ namespace MixedCallStackSampleClient
 	std::list<PVOID> CorProfiler::GetNativeFrames(
 		const HANDLE processHandle,
 		const HANDLE threadHandle,
-		const PCONTEXT context
+		const PCONTEXT context,
+		DWORD64& terminatedByIP,
+		FunctionID& terminatedByFuncID
 	) const
 	{
+		terminatedByIP = 0;
+		terminatedByFuncID = 0;
+
 		std::list<PVOID> stackFrames;
 
 		if (threadHandle == nullptr ||
@@ -914,7 +927,11 @@ namespace MixedCallStackSampleClient
 			FunctionID managedFunction = 0;
 			HRESULT funcResult = _profilerInfo->GetFunctionFromIP(reinterpret_cast<BYTE*>(ip), &managedFunction);
 			if (SUCCEEDED(funcResult) && managedFunction != 0)
+			{
+				terminatedByIP = ip;
+				terminatedByFuncID = managedFunction;
 				break;
+			}
 
 			stackFrames.push_back(reinterpret_cast<PVOID>(stackFrame.AddrPC.Offset));
 		}

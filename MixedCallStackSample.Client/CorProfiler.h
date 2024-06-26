@@ -135,7 +135,9 @@ namespace MixedCallStackSampleClient
 		std::list<PVOID> GetNativeFrames(
 			const HANDLE processHandle,
 			const HANDLE threadHandle,
-			const PCONTEXT context
+			const PCONTEXT context,
+			DWORD64& terminatedByIP,
+			FunctionID& terminatedByFuncID
 		) const;
 
 	private:
