@@ -10,7 +10,7 @@ namespace MixedCallStackSampleClient
 		static void DetachDetours();
 
 	private:
-		static void ProcessLoadLibrary(const CString& dependencyName);
+		static void ProcessLoadLibrary(const CString& libFileName);
 		static void ProcessFreeLibrary(HMODULE moduleHandle);
 
 	private:
