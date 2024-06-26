@@ -20,6 +20,9 @@ namespace MixedCallStackSampleClient
 		static HMODULE WINAPI OnLoadLibraryExW(LPCWSTR libFileName, HANDLE hFile, DWORD dwFlags);
 		static BOOL WINAPI OnFreeLibrary(HMODULE hLibModule);
 
+	private:
+		inline static auto _procMutex = std::mutex();
+
 	};
 
 }

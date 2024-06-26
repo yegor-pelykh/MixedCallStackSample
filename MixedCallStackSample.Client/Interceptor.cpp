@@ -39,6 +39,8 @@ namespace MixedCallStackSampleClient
 
     void Interceptor::ProcessLoadLibrary(const CString& libFileName)
     {
+        std::lock_guard procLock(_procMutex);
+
         const auto corProfiler = GlobalData::GetCorProfiler();
         if (corProfiler == nullptr)
             return;
@@ -52,6 +54,8 @@ namespace MixedCallStackSampleClient
 
     void Interceptor::ProcessFreeLibrary(HMODULE moduleHandle)
 	{
+        std::lock_guard procLock(_procMutex);
+
         const auto corProfiler = GlobalData::GetCorProfiler();
         if (corProfiler == nullptr)
             return;
