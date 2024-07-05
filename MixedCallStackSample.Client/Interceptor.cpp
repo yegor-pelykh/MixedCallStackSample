@@ -46,7 +46,7 @@ namespace MixedCallStackSampleClient
             return;
 
         CONTEXT context = { 0 };
-        context.ContextFlags = CONTEXT_FULL;
+        context.ContextFlags = CONTEXT_CONTROL;
         RtlCaptureContext(&context);
 
         corProfiler->GetMixedCallStack(&context);
@@ -61,7 +61,7 @@ namespace MixedCallStackSampleClient
             return;
 
         CONTEXT context = { 0 };
-        context.ContextFlags = CONTEXT_FULL;
+        context.ContextFlags = CONTEXT_CONTROL;
         RtlCaptureContext(&context);
 
         corProfiler->GetMixedCallStack(&context);
