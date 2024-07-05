@@ -94,7 +94,7 @@ namespace MixedCallStackSample.ClientTest.CLR
                 if (moduleUser32 != IntPtr.Zero)
                     FreeLibrary(moduleUser32);
 
-                Thread.Sleep(20);
+                Thread.Sleep(1000);
             }
         }
 
