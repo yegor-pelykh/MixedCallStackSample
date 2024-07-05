@@ -133,10 +133,9 @@ namespace MixedCallStackSampleClient
 		CString GetClassIDName(ClassID classId);
 		void ReleaseProfilerInfo();
 		std::list<PVOID> GetNativeFrames(
-			const HANDLE processHandle,
 			const HANDLE threadHandle,
 			const PCONTEXT context,
-			DWORD64& terminatedByIP,
+			PVOID& terminatedByIP,
 			FunctionID& terminatedByFuncID
 		) const;
 
@@ -144,11 +143,6 @@ namespace MixedCallStackSampleClient
 		static HRESULT __stdcall DoStackSnapshotCallback(FunctionID funcId,
 			UINT_PTR ip, COR_PRF_FRAME_INFO frameInfo, ULONG32 contextSize,
 			BYTE context[], void* clientData);
-		static void ExpandNativeFrames(
-			HANDLE threadHandle,
-			const std::list<DWORD64>& ipStack,
-			const std::vector<StackFrame>& stackFrames
-		);
 
 	private:
 		std::atomic<long> _refCount;

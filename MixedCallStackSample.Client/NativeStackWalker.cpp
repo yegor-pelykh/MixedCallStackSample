@@ -45,7 +45,7 @@ namespace MixedCallStackSampleClient
 		return callerModuleHandle == currentModuleHandle;
 	}
 
-	HRESULT NativeStackWalker::AnnotateStack(const std::list<DWORD64>& ipStack, std::list<CString>& annotationStack)
+	HRESULT NativeStackWalker::AnnotateStack(const std::list<PVOID>& ipStack, std::list<CString>& annotationStack)
 	{
 		if (!_isSymLoaded)
 			return S_FALSE;
@@ -54,7 +54,7 @@ namespace MixedCallStackSampleClient
 
 		for (auto it = ipStack.begin(); it != ipStack.end(); ++it)
 		{
-			const DWORD64 ip = *it;
+			const PVOID ip = *it;
 
 			CString annotation;
 			AnnotateIP(ip, annotation);
@@ -65,7 +65,7 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT NativeStackWalker::AnnotateIP(const DWORD64 ip, CString& annotation)
+	HRESULT NativeStackWalker::AnnotateIP(const PVOID ip, CString& annotation)
 	{
 		annotation.Empty();
 
@@ -81,7 +81,7 @@ namespace MixedCallStackSampleClient
 
 		DWORD64 displacement = 0;
 
-		DWORD64 moduleBaseAddress = SymGetModuleBase64(_processHandle, ip);
+		DWORD64 moduleBaseAddress = SymGetModuleBase64(_processHandle, reinterpret_cast<DWORD64>(ip));
 		if (moduleBaseAddress == 0)
 			return S_FALSE;
 
@@ -95,25 +95,25 @@ namespace MixedCallStackSampleClient
 			? CString(moduleInfo.ModuleName)
 			: CString("UnknownModule");
 
-		BOOL isSymFromAddrSuccess = SymGetSymFromAddr64(_processHandle, ip, &displacement, symbolInfo);
+		BOOL isSymFromAddrSuccess = SymGetSymFromAddr64(_processHandle, reinterpret_cast<DWORD64>(ip), &displacement, symbolInfo);
 		if (!isSymFromAddrSuccess)
 			return S_FALSE;
 
 		IMAGEHLP_LINE64 line = { 0 };
 
 		DWORD disp = static_cast<DWORD>(displacement);
-		const BOOL isLineFromAddrSuccess = SymGetLineFromAddr64(_processHandle, ip, &disp, &line);
+		const BOOL isLineFromAddrSuccess = SymGetLineFromAddr64(_processHandle, reinterpret_cast<DWORD64>(ip), &disp, &line);
 		if (isLineFromAddrSuccess)
 		{
 			CString buf;
-			buf.AppendFormat(_T("%s!%hs(%i) : 0x%08I64X (%llu)"),
+			buf.AppendFormat(_T("%s!%hs(%i) : 0x%08p (%p)"),
 				moduleName.GetString(), symbolInfo->Name, line.LineNumber, ip, ip);
 			annotation = buf;
 		}
 		else
 		{
 			CString buf;
-			buf.AppendFormat(_T("%s!%hs(UnknownLine) : 0x%08I64X (%llu)"),
+			buf.AppendFormat(_T("%s!%hs(UnknownLine) : 0x%08p (%p)"),
 				moduleName.GetString(), symbolInfo->Name, ip, ip);
 			annotation = buf;
 		}
@@ -155,16 +155,6 @@ namespace MixedCallStackSampleClient
 		stackFrame.AddrFrame.Mode = AddrModeFlat;
 		stackFrame.AddrStack.Offset = addrStack;
 		stackFrame.AddrStack.Mode = AddrModeFlat;
-#elif _M_IA64
-		image = IMAGE_FILE_MACHINE_IA64;
-		stackFrame.AddrPC.Offset = addrPC;
-		stackFrame.AddrPC.Mode = AddrModeFlat;
-		stackFrame.AddrFrame.Offset = addrFrame;
-		stackFrame.AddrFrame.Mode = AddrModeFlat;
-		stackFrame.AddrBStore.Offset = addrStack;
-		stackFrame.AddrBStore.Mode = AddrModeFlat;
-		stackFrame.AddrStack.Offset = addrFrame;
-		stackFrame.AddrStack.Mode = AddrModeFlat;
 #else
 #error "Platform not supported!"
 #endif
@@ -179,10 +169,6 @@ namespace MixedCallStackSampleClient
 		context.Rip = addrPC;
 		context.Rbp = addrFrame;
 		context.Rsp = addrStack;
-#elif _M_IA64
-		context.StIIP = addrPC;
-		context.IntSp = addrFrame;
-		context.RsBSP = addrStack;
 #else
 #error "Platform not supported!"
 #endif

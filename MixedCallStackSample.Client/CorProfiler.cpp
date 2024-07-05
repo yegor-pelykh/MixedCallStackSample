@@ -583,39 +583,21 @@ namespace MixedCallStackSampleClient
 
 	void CorProfiler::GetMixedCallStack(const PCONTEXT context)
 	{
-		const auto processHandle = GetCurrentProcess();
 		const auto nativeThreadHandle = GetCurrentThread();
 		const auto nativeThreadID = GetCurrentThreadId();
 
-		// This method gets the managed thrad corresponding to the native thread.
 		const auto managedThreadID = GetManagedThreadIdFromNative(nativeThreadID);
 		if (managedThreadID == 0)
-		{
-			// TODO:
-			// Is it ok that sometimes we can't find the corresponding thread?
 			return;
-		}
 
-		DWORD64 firstManagedIP = 0;
+		PVOID firstManagedIP = nullptr;
 		FunctionID firstManagedFuncID = 0;
 		const auto nativeFrames = GetNativeFrames(
-			processHandle,
 			nativeThreadHandle,
 			context,
 			firstManagedIP,
 			firstManagedFuncID
 		);
-
-		// TODO:
-		// For some reason, in most cases the `nativeFrames` collection is wrong.
-		// Despite the fact that I provided for the StackWalk64 traversal loop
-		// to break when it encounters the first managed frame (in GetNativeFrames() function),
-		// the managed frame is often not encountered at all, allowing all iterations
-		// of StackWalk64 to go through.
-		// This is definitely wrong.
-		// This is especially noticeable when the Main function of the profiled application
-		// has already been called, and we have a call stack with guaranteed managed frames
-		// (which can be seen in the CallStack Window in Visual Studio).
 
 		const auto stackFrames = new std::vector<StackFrame>();
 		const HRESULT result = _profilerInfo->DoStackSnapshot(
@@ -629,13 +611,7 @@ namespace MixedCallStackSampleClient
 
 		if (SUCCEEDED(result))
 		{
-			// We collected all managed frames and groups of unmanaged frames.
-
-			// TODO:
-			// What is the correct way to traverse the stack
-			// and find managed frames and then combine them with unmanaged frames?
-
-			// ExpandNativeFrames(nativeThreadHandle, ipStack, *stackFrames);
+			// TODO
 		}
 		else
 		{
@@ -857,14 +833,13 @@ namespace MixedCallStackSampleClient
 	}
 
 	std::list<PVOID> CorProfiler::GetNativeFrames(
-		const HANDLE processHandle,
 		const HANDLE threadHandle,
 		const PCONTEXT context,
-		DWORD64& terminatedByIP,
+		PVOID& terminatedByIP,
 		FunctionID& terminatedByFuncID
 	) const
 	{
-		terminatedByIP = 0;
+		terminatedByIP = nullptr;
 		terminatedByFuncID = 0;
 
 		std::list<PVOID> stackFrames;
@@ -873,68 +848,58 @@ namespace MixedCallStackSampleClient
 			threadHandle == INVALID_HANDLE_VALUE)
 			return stackFrames;
 
-		DWORD image;
-		STACKFRAME64 stackFrame;
-		ZeroMemory(&stackFrame, sizeof(STACKFRAME64));
-
 #ifdef _M_IX86
-		image = IMAGE_FILE_MACHINE_I386;
-		stackFrame.AddrPC.Offset = context->Eip;
-		stackFrame.AddrPC.Mode = AddrModeFlat;
-		stackFrame.AddrFrame.Offset = context->Ebp;
-		stackFrame.AddrFrame.Mode = AddrModeFlat;
-		stackFrame.AddrStack.Offset = context->Esp;
-		stackFrame.AddrStack.Mode = AddrModeFlat;
-#elif _M_X64
-		image = IMAGE_FILE_MACHINE_AMD64;
-		stackFrame.AddrPC.Offset = context->Rip;
-		stackFrame.AddrPC.Mode = AddrModeFlat;
-		stackFrame.AddrFrame.Offset = context->Rbp;
-		stackFrame.AddrFrame.Mode = AddrModeFlat;
-		stackFrame.AddrStack.Offset = context->Rsp;
-		stackFrame.AddrStack.Mode = AddrModeFlat;
-#elif _M_IA64
-		image = IMAGE_FILE_MACHINE_IA64;
-		stackFrame.AddrPC.Offset = context->StIIP;
-		stackFrame.AddrPC.Mode = AddrModeFlat;
-		stackFrame.AddrFrame.Offset = context->IntSp;
-		stackFrame.AddrFrame.Mode = AddrModeFlat;
-		stackFrame.AddrBStore.Offset = context->RsBSP;
-		stackFrame.AddrBStore.Mode = AddrModeFlat;
-		stackFrame.AddrStack.Offset = context->IntSp;
-		stackFrame.AddrStack.Mode = AddrModeFlat;
-#else
-#error "Platform not supported!"
-#endif
+		stackFrames.push_back(reinterpret_cast<PVOID>(context->Eip));
 
-		CONTEXT newContext;
-		memcpy(&newContext, context, sizeof(CONTEXT));
-
-		while (StackWalk64(
-			image,
-			processHandle,
-			threadHandle,
-			&stackFrame,
-			&newContext,
-			nullptr,
-			SymFunctionTableAccess64,
-			SymGetModuleBase64,
-			nullptr
-		))
+		DWORD frameAddress = context->Ebp;
+		const auto teb = reinterpret_cast<NT_TIB*>(::NtCurrentTeb());
+		while (
+			((frameAddress & 3) == 0) &&
+			frameAddress + 2 * sizeof(VOID*) < reinterpret_cast<UINT_PTR>(teb->StackBase) &&
+			frameAddress >= reinterpret_cast<UINT_PTR>(teb->StackLimit))
 		{
-			const DWORD64 ip = stackFrame.AddrPC.Offset;
+			const UINT_PTR returnAddress = reinterpret_cast<UINT_PTR*>(frameAddress)[1];
+			if (returnAddress == 0)
+				break;
 
 			FunctionID managedFunction = 0;
-			HRESULT funcResult = _profilerInfo->GetFunctionFromIP(reinterpret_cast<BYTE*>(ip), &managedFunction);
+			const HRESULT funcResult = _profilerInfo->GetFunctionFromIP(reinterpret_cast<LPCBYTE>(returnAddress), &managedFunction);
 			if (SUCCEEDED(funcResult) && managedFunction != 0)
 			{
-				terminatedByIP = ip;
+				terminatedByIP = reinterpret_cast<PVOID>(returnAddress);
 				terminatedByFuncID = managedFunction;
 				break;
 			}
 
-			stackFrames.push_back(reinterpret_cast<PVOID>(stackFrame.AddrPC.Offset));
+			stackFrames.push_back(reinterpret_cast<PVOID>(returnAddress));
+
+			frameAddress = reinterpret_cast<UINT_PTR*>(frameAddress)[0];
 		}
+#elif  _M_X64
+		CONTEXT newContext;
+		memcpy(&newContext, context, sizeof(CONTEXT));
+
+		DWORD64 ImageBase;
+		PRUNTIME_FUNCTION runtimeFunction;
+		while ((runtimeFunction = RtlLookupFunctionEntry(newContext.Rip, &ImageBase, nullptr)) != nullptr)
+		{
+			FunctionID managedFunction = 0;
+			const HRESULT funcResult = _profilerInfo->GetFunctionFromIP(reinterpret_cast<LPCBYTE>(newContext.Rip), &managedFunction);
+			if (SUCCEEDED(funcResult) && managedFunction != 0)
+			{
+				terminatedByIP = reinterpret_cast<PVOID>(newContext.Rip);
+				terminatedByFuncID = managedFunction;
+				break;
+			}
+
+			stackFrames.push_back(reinterpret_cast<PVOID>(newContext.Rip));
+
+			PVOID handlerData;
+			ULONG64 establisherFrame;
+			RtlVirtualUnwind(UNW_FLAG_NHANDLER, ImageBase, newContext.Rip,
+				runtimeFunction, &newContext, &handlerData, &establisherFrame, nullptr);
+		}
+#endif
 
 		return stackFrames;
 	}
@@ -959,10 +924,6 @@ namespace MixedCallStackSampleClient
 		DWORD64 addrPC = ip;
 		DWORD64 addrFrame = contextData->Rbp;
 		DWORD64 addrStack = contextData->Rsp;
-#elif _M_IA64
-		DWORD64 addrPC = contextData->StIIP;
-		DWORD64 addrFrame = contextData->IntSp;
-		DWORD64 addrStack = contextData->RsBSP;
 #else
 #error "Platform not supported!"
 #endif
@@ -998,24 +959,4 @@ namespace MixedCallStackSampleClient
 
 		return result;
 	}
-
-	void CorProfiler::ExpandNativeFrames(
-		HANDLE threadHandle,
-		const std::list<DWORD64>& ipStack,
-		const std::vector<StackFrame>& stackFrames
-	)
-	{
-		for (const auto& frame : stackFrames)
-		{
-			if (frame.IsManaged)
-			{
-				OutputDebugString(_T("Managed Frame"));
-			}
-			else
-			{
-				OutputDebugString(_T("Unmanaged Frame Block"));
-			}
-		}
-	}
-
 }
