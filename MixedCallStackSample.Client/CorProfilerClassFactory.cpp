@@ -1,6 +1,6 @@
 #include "pch.h"
 #include "CorProfilerClassFactory.h"
-#include "GlobalData.h"
+#include "InstanceManager.h"
 #include "CorProfiler.h"
 
 namespace MixedCallStackSampleClient
@@ -8,12 +8,12 @@ namespace MixedCallStackSampleClient
 	CorProfilerClassFactory::CorProfilerClassFactory()
 		: _refCount(0)
 	{
-		GlobalData::IncrementComObjectsInUse();
+		InstanceManager::IncrementComObjectsInUse();
 	}
 
 	CorProfilerClassFactory::~CorProfilerClassFactory()
 	{
-		GlobalData::DecrementComObjectsInUse();
+		InstanceManager::DecrementComObjectsInUse();
 	}
 
 	HRESULT CorProfilerClassFactory::QueryInterface(REFIID riid, void** ppvObject)

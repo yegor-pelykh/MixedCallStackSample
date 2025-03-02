@@ -1,6 +1,6 @@
 #include "pch.h"
 #include "Client.h"
-#include "GlobalData.h"
+#include "InstanceManager.h"
 #include "Interceptor.h"
 #include "NativeStackWalker.h"
 
@@ -16,7 +16,7 @@ namespace MixedCallStackSampleClient
 	void Client::Unload()
 	{
 		Interceptor::DetachDetours();
-		GlobalData::ReleaseCorProfiler();
+		InstanceManager::ReleaseCorProfiler();
 		NativeStackWalker::Unload();
 	}
 

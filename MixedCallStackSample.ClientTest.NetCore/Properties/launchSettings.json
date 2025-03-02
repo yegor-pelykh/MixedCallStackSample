@@ -1,0 +1,18 @@
+{
+  "profiles": {
+    "MixedCallStackSample.ClientTest.NetCore": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "COR_ENABLE_PROFILING": "1",
+        "CORECLR_ENABLE_PROFILING": "1",
+        "COR_PROFILER": "{420DB72F-7A39-43C0-9E74-988670E44AB8}",
+        "CORECLR_PROFILER": "{420DB72F-7A39-43C0-9E74-988670E44AB8}",
+        "COR_PROFILER_PATH_32": "$(TargetDir)Client.32\\MixedCallStackSample.Client.32.dll",
+        "CORECLR_PROFILER_PATH_32": "$(TargetDir)Client.32\\MixedCallStackSample.Client.32.dll",
+        "COR_PROFILER_PATH_64": "$(TargetDir)Client.64\\MixedCallStackSample.Client.64.dll",
+        "CORECLR_PROFILER_PATH_64": "$(TargetDir)Client.64\\MixedCallStackSample.Client.64.dll"
+      },
+      "nativeDebugging": true
+    }
+  }
+}

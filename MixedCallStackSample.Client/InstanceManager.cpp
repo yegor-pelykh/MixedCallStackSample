@@ -1,10 +1,10 @@
 #include "pch.h"
-#include "GlobalData.h"
+#include "InstanceManager.h"
 #include "CorProfiler.h"
 
 namespace MixedCallStackSampleClient
 {
-	void GlobalData::SetCorProfiler(CorProfiler* profiler)
+	void InstanceManager::SetCorProfiler(CorProfiler* profiler)
 	{
 		if (profiler != nullptr)
 		{
@@ -13,7 +13,7 @@ namespace MixedCallStackSampleClient
 		}
 	}
 
-	void GlobalData::ReleaseCorProfiler()
+	void InstanceManager::ReleaseCorProfiler()
 	{
 		if (_profiler != nullptr)
 		{

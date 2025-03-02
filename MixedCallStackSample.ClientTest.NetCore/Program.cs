@@ -1,6 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace MixedCallStackSample.ClientTest.CLR
+namespace MixedCallStackSample.ClientTest.NetCore
 {
     internal class Program
     {

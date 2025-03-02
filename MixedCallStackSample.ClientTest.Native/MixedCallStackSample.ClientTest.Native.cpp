@@ -6,18 +6,18 @@
 #define new DEBUG_NEW
 #endif
 
-CWinApp theApp;
+static CWinApp theApp;
 
 constexpr int iterationsCount = 1000;
 constexpr const TCHAR* client32LibPath = _T("Client.32/MixedCallStackSample.Client.32.dll");
 constexpr const TCHAR* client64LibPath = _T("Client.64/MixedCallStackSample.Client.64.dll");
 
-bool Is64BitProcess()
+static bool Is64BitProcess()
 {
     return CHAR_BIT * sizeof(void*) == 64;
 }
 
-void TestProcedure()
+static void TestProcedure()
 {
     for (int i = 0; i < iterationsCount; i++)
     {

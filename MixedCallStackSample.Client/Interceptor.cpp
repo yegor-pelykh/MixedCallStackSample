@@ -1,9 +1,9 @@
 #include "pch.h"
 #include "Interceptor.h"
-#include "CorProfiler.h"
-#include "GlobalData.h"
 #include "NativeStackWalker.h"
-#include "OriginalFunctions.hpp"
+#include "ProcessInfo.hpp"
+#include "RecursionGuard.hpp"
+#include "StackWalker.h"
 
 namespace MixedCallStackSampleClient
 {
@@ -17,11 +17,11 @@ namespace MixedCallStackSampleClient
         DetourRestoreAfterWith();
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
-        DetourAttach(&reinterpret_cast<PVOID&>(OriginalFunctions::RealLoadLibraryA), OnLoadLibraryA);
-        DetourAttach(&reinterpret_cast<PVOID&>(OriginalFunctions::RealLoadLibraryW), OnLoadLibraryW);
-        DetourAttach(&reinterpret_cast<PVOID&>(OriginalFunctions::RealLoadLibraryExA), OnLoadLibraryExA);
-        DetourAttach(&reinterpret_cast<PVOID&>(OriginalFunctions::RealLoadLibraryExW), OnLoadLibraryExW);
-        DetourAttach(&reinterpret_cast<PVOID&>(OriginalFunctions::RealFreeLibrary), OnFreeLibrary);
+        DetourAttach(&reinterpret_cast<PVOID&>(RealLoadLibraryA), OnLoadLibraryA);
+        DetourAttach(&reinterpret_cast<PVOID&>(RealLoadLibraryW), OnLoadLibraryW);
+        DetourAttach(&reinterpret_cast<PVOID&>(RealLoadLibraryExA), OnLoadLibraryExA);
+        DetourAttach(&reinterpret_cast<PVOID&>(RealLoadLibraryExW), OnLoadLibraryExW);
+        DetourAttach(&reinterpret_cast<PVOID&>(RealFreeLibrary), OnFreeLibrary);
         DetourTransactionCommit();
     }
 
@@ -29,96 +29,140 @@ namespace MixedCallStackSampleClient
     {
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
-        DetourDetach(&reinterpret_cast<PVOID&>(OriginalFunctions::RealLoadLibraryA), OnLoadLibraryA);
-        DetourDetach(&reinterpret_cast<PVOID&>(OriginalFunctions::RealLoadLibraryW), OnLoadLibraryW);
-        DetourDetach(&reinterpret_cast<PVOID&>(OriginalFunctions::RealLoadLibraryExA), OnLoadLibraryExA);
-        DetourDetach(&reinterpret_cast<PVOID&>(OriginalFunctions::RealLoadLibraryExW), OnLoadLibraryExW);
-        DetourDetach(&reinterpret_cast<PVOID&>(OriginalFunctions::RealFreeLibrary), OnFreeLibrary);
+        DetourDetach(&reinterpret_cast<PVOID&>(RealLoadLibraryA), OnLoadLibraryA);
+        DetourDetach(&reinterpret_cast<PVOID&>(RealLoadLibraryW), OnLoadLibraryW);
+        DetourDetach(&reinterpret_cast<PVOID&>(RealLoadLibraryExA), OnLoadLibraryExA);
+        DetourDetach(&reinterpret_cast<PVOID&>(RealLoadLibraryExW), OnLoadLibraryExW);
+        DetourDetach(&reinterpret_cast<PVOID&>(RealFreeLibrary), OnFreeLibrary);
         DetourTransactionCommit();
     }
 
-    void Interceptor::ProcessLoadLibrary(const CString& libFileName)
+    void Interceptor::ProcessLoadLibrary(const CString& libFileName, const std::deque<StackFrame>& callStack)
     {
         std::lock_guard procLock(_procMutex);
 
-        const auto corProfiler = GlobalData::GetCorProfiler();
-        if (corProfiler == nullptr)
-            return;
-
-        CONTEXT context = { 0 };
-        context.ContextFlags = CONTEXT_CONTROL;
-        RtlCaptureContext(&context);
-
-        corProfiler->GetMixedCallStack(&context);
+        // ...
     }
 
-    void Interceptor::ProcessFreeLibrary(HMODULE moduleHandle)
+    void Interceptor::ProcessFreeLibrary(HMODULE moduleHandle, const std::deque<StackFrame>& callStack)
 	{
         std::lock_guard procLock(_procMutex);
 
-        const auto corProfiler = GlobalData::GetCorProfiler();
-        if (corProfiler == nullptr)
-            return;
-
-        CONTEXT context = { 0 };
-        context.ContextFlags = CONTEXT_CONTROL;
-        RtlCaptureContext(&context);
-
-        corProfiler->GetMixedCallStack(&context);
+        // ...
 	}
     
-    HMODULE WINAPI Interceptor::OnLoadLibraryA(LPCSTR libFileName)
+    HMODULE WINAPI Interceptor::OnLoadLibraryA(const LPCSTR libFileName)
     {
-        if (NativeStackWalker::IsCalledFromThisModule())
-            return OriginalFunctions::RealLoadLibraryA(libFileName);
+        if (const RecursionGuard recursionGuard; recursionGuard.IsInitiator())
+        {
+            if (!ProcessInfo::IsNETServiceThread())
+            {
+                CONTEXT context = { .ContextFlags = CONTEXT_CONTROL };
+                RtlCaptureContext(&context);
 
-        const CString libName = libFileName;
-        ProcessLoadLibrary(libName);
+                const auto addressToTrim = NativeStackWalker::GetSymbolFromAddress(context);
+                const auto callStack = StackWalker::GetCallStackEx(addressToTrim);
 
-        return OriginalFunctions::RealLoadLibraryA(libFileName);
+                if (!StackWalker::IsCalledFromThisModule(callStack))
+                {
+                    const CString libName = libFileName;
+                    ProcessLoadLibrary(libName, callStack);
+				}
+			}
+        }
+
+        return RealLoadLibraryA(libFileName);
     }
 
-    HMODULE WINAPI Interceptor::OnLoadLibraryW(LPCWSTR libFileName)
+    HMODULE WINAPI Interceptor::OnLoadLibraryW(const LPCWSTR libFileName)
     {
-        if (NativeStackWalker::IsCalledFromThisModule())
-            return OriginalFunctions::RealLoadLibraryW(libFileName);
+        if (const RecursionGuard recursionGuard; recursionGuard.IsInitiator())
+        {
+            if (!ProcessInfo::IsNETServiceThread())
+            {
+                CONTEXT context = { .ContextFlags = CONTEXT_CONTROL };
+                RtlCaptureContext(&context);
 
-        const CString libName = libFileName;
-        ProcessLoadLibrary(libName);
+                const auto addressToTrim = NativeStackWalker::GetSymbolFromAddress(context);
+                const auto callStack = StackWalker::GetCallStackEx(addressToTrim);
 
-        return OriginalFunctions::RealLoadLibraryW(libFileName);
+                if (!StackWalker::IsCalledFromThisModule(callStack))
+                {
+                    const CString libName = libFileName;
+                    ProcessLoadLibrary(libName, callStack);
+				}
+			}
+        }
+
+        return RealLoadLibraryW(libFileName);
     }
 
-    HMODULE WINAPI Interceptor::OnLoadLibraryExA(LPCSTR libFileName, HANDLE hFile, DWORD dwFlags)
+    HMODULE WINAPI Interceptor::OnLoadLibraryExA(const LPCSTR libFileName, const HANDLE hFile, const DWORD dwFlags)
     {
-        if (NativeStackWalker::IsCalledFromThisModule())
-            return OriginalFunctions::RealLoadLibraryExA(libFileName, hFile, dwFlags);
+        if (const RecursionGuard recursionGuard; recursionGuard.IsInitiator())
+        {
+            if (!ProcessInfo::IsNETServiceThread())
+            {
+                CONTEXT context = { .ContextFlags = CONTEXT_CONTROL };
+                RtlCaptureContext(&context);
 
-        const CString libName = libFileName;
-        ProcessLoadLibrary(libName);
+                const auto addressToTrim = NativeStackWalker::GetSymbolFromAddress(context);
+                const auto callStack = StackWalker::GetCallStackEx(addressToTrim);
 
-        return OriginalFunctions::RealLoadLibraryExA(libFileName, hFile, dwFlags);
+                if (!StackWalker::IsCalledFromThisModule(callStack))
+                {
+                	const CString libName = libFileName;
+                	ProcessLoadLibrary(libName, callStack);
+                }
+            }
+        }
+
+        return RealLoadLibraryExA(libFileName, hFile, dwFlags);
     }
 
-    HMODULE WINAPI Interceptor::OnLoadLibraryExW(LPCWSTR libFileName, HANDLE hFile, DWORD dwFlags)
+    HMODULE WINAPI Interceptor::OnLoadLibraryExW(const LPCWSTR libFileName, const HANDLE hFile, const DWORD dwFlags)
     {
-        if (NativeStackWalker::IsCalledFromThisModule())
-            return OriginalFunctions::RealLoadLibraryExW(libFileName, hFile, dwFlags);
+        if (const RecursionGuard recursionGuard; recursionGuard.IsInitiator())
+        {
+            if (!ProcessInfo::IsNETServiceThread())
+            {
+                CONTEXT context = { .ContextFlags = CONTEXT_CONTROL };
+                RtlCaptureContext(&context);
 
-        const CString libName = libFileName;
-        ProcessLoadLibrary(libName);
+                const auto addressToTrim = NativeStackWalker::GetSymbolFromAddress(context);
+                const auto callStack = StackWalker::GetCallStackEx(addressToTrim);
 
-        return OriginalFunctions::RealLoadLibraryExW(libFileName, hFile, dwFlags);
+	            if (!StackWalker::IsCalledFromThisModule(callStack))
+	            {
+	            	const CString libName = libFileName;
+	            	ProcessLoadLibrary(libName, callStack);
+	            }
+            }
+        }
+
+        return RealLoadLibraryExW(libFileName, hFile, dwFlags);
     }
 
-    BOOL WINAPI Interceptor::OnFreeLibrary(HMODULE hLibModule)
+    BOOL WINAPI Interceptor::OnFreeLibrary(const HMODULE hLibModule)
     {
-        if (NativeStackWalker::IsCalledFromThisModule())
-            return OriginalFunctions::RealFreeLibrary(hLibModule);
+        if (const RecursionGuard recursionGuard; recursionGuard.IsInitiator())
+        {
+            if (!ProcessInfo::IsNETServiceThread())
+            {
+                CONTEXT context = { .ContextFlags = CONTEXT_CONTROL };
+                RtlCaptureContext(&context);
 
-        ProcessFreeLibrary(hLibModule);
+                const auto addressToTrim = NativeStackWalker::GetSymbolFromAddress(context);
+                const auto callStack = StackWalker::GetCallStackEx(addressToTrim);
 
-        return OriginalFunctions::RealFreeLibrary(hLibModule);
+	            if (!StackWalker::IsCalledFromThisModule(callStack))
+	            {
+            		ProcessFreeLibrary(hLibModule, callStack);
+	            }
+            }
+        }
+
+        return RealFreeLibrary(hLibModule);
     }
 
 }

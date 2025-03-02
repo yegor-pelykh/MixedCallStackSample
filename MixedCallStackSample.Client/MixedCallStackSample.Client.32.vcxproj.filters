@@ -21,9 +21,6 @@
     <ClInclude Include="pch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="OriginalFunctions.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Interceptor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -39,16 +36,25 @@
     <ClInclude Include="ProcessInfo.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="GlobalData.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="StackFrame.hpp">
+    <ClInclude Include="InstanceManager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="NativeStackWalker.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="COMPtrHolder.hpp">
+    <ClInclude Include="FrameRegisters.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="StackWalker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="StackFrame.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ProfilerFrame.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RecursionGuard.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -71,10 +77,13 @@
     <ClCompile Include="CorProfilerClassFactory.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="GlobalData.cpp">
+    <ClCompile Include="InstanceManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="NativeStackWalker.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="StackWalker.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

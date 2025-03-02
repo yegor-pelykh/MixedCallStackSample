@@ -1,8 +1,9 @@
 #include "pch.h"
 #include "CorProfiler.h"
-#include "COMPtrHolder.hpp"
-#include "GlobalData.h"
+#include "FrameRegisters.hpp"
+#include "InstanceManager.h"
 #include "NativeStackWalker.h"
+#include "ProfilerFrame.hpp"
 
 constexpr ULONG ModuleNameMaxLength = 2048;
 constexpr ULONG32 TypeArgsMaxLength = 10;
@@ -15,12 +16,14 @@ namespace MixedCallStackSampleClient
 		: _refCount(0)
 		, _profilerInfo(nullptr)
 		, _isAppExecutionStarted(false)
+		, _runtimeType(COR_PRF_DESKTOP_CLR)
 	{
+		InstanceManager::IncrementComObjectsInUse();
 	}
 
 	CorProfiler::~CorProfiler()
 	{
-		ReleaseProfilerInfo();
+		InstanceManager::DecrementComObjectsInUse();
 	}
 
 	HRESULT CorProfiler::QueryInterface(const IID& riid, void** ppvObject)
@@ -61,27 +64,22 @@ namespace MixedCallStackSampleClient
 
 	HRESULT CorProfiler::Initialize(IUnknown* pICorProfilerInfoUnk)
 	{
-		ReleaseProfilerInfo();
-
 		const HRESULT queryResult = pICorProfilerInfoUnk->QueryInterface(
 			__uuidof(ICorProfilerInfo8), reinterpret_cast<void**>(&_profilerInfo));
 
 		if (FAILED(queryResult))
-		{
-			ReleaseProfilerInfo();
 			return E_FAIL;
-		}
 
 		// Saving a profiler instance for use in asynchronous functions
-		GlobalData::SetCorProfiler(this);
+		InstanceManager::SetCorProfiler(this);
 
 		return SetEventMask();
 	}
 
 	HRESULT CorProfiler::Shutdown()
 	{
-		ReleaseProfilerInfo();
-		GlobalData::ReleaseCorProfiler();
+		InstanceManager::ReleaseCorProfiler();
+
 		return S_OK;
 	}
 
@@ -137,12 +135,20 @@ namespace MixedCallStackSampleClient
 
 		LPCBYTE baseAddress;
 		CString moduleName;
-		const HRESULT result = GetModuleInfo(moduleId, baseAddress, moduleName);
+		AssemblyID assemblyId = 0;
+		HRESULT result = GetModuleInfo(moduleId, moduleName, baseAddress, assemblyId);
 		if (SUCCEEDED(result))
 		{
 			_moduleBaseAddress[moduleId] = baseAddress;
-			_moduleName[moduleId] = moduleName;
+			_modulePath[moduleId] = moduleName;
+			_moduleAssemblyID[moduleId] = assemblyId;
 		}
+
+		auto mdi = CComPtr<IMetaDataImport>();
+		result = _profilerInfo->GetModuleMetaData(moduleId, ofRead,
+			IID_IMetaDataImport, reinterpret_cast<IUnknown**>(&mdi));
+		if (SUCCEEDED(result))
+			_moduleMDI[moduleId] = mdi;
 
 		return S_OK;
 	}
@@ -157,8 +163,9 @@ namespace MixedCallStackSampleClient
 		if (FAILED(hrStatus))
 			return S_OK;
 
+		_moduleAssemblyID.erase(moduleId);
 		_moduleBaseAddress.erase(moduleId);
-		_moduleName.erase(moduleId);
+		_modulePath.erase(moduleId);
 
 		return S_OK;
 	}
@@ -168,60 +175,66 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ClassLoadStarted(ClassID classId)
+	HRESULT CorProfiler::ClassLoadStarted(ClassID classID)
+	{
+		CacheClass(classID);
+
+		return S_OK;
+	}
+
+	HRESULT CorProfiler::ClassLoadFinished(ClassID classID, HRESULT hrStatus)
+	{
+		CacheClass(classID);
+		
+		return S_OK;
+	}
+
+	HRESULT CorProfiler::ClassUnloadStarted(ClassID classID)
 	{
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ClassLoadFinished(ClassID classId, HRESULT hrStatus)
+	HRESULT CorProfiler::ClassUnloadFinished(ClassID classID, HRESULT hrStatus)
+	{
+		_className.erase(classID);
+
+		return S_OK;
+	}
+
+	HRESULT CorProfiler::FunctionUnloadStarted(FunctionID functionID)
 	{
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ClassUnloadStarted(ClassID classId)
+	HRESULT CorProfiler::JITCompilationStarted(FunctionID functionID, BOOL fIsSafeToBlock)
 	{
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ClassUnloadFinished(ClassID classId, HRESULT hrStatus)
+	HRESULT CorProfiler::JITCompilationFinished(FunctionID functionID, HRESULT hrStatus, BOOL fIsSafeToBlock)
 	{
-		return S_OK;
-	}
-
-	HRESULT CorProfiler::FunctionUnloadStarted(FunctionID functionId)
-	{
-		return S_OK;
-	}
-
-	HRESULT CorProfiler::JITCompilationStarted(FunctionID functionId, BOOL fIsSafeToBlock)
-	{
-		return S_OK;
-	}
-
-	HRESULT CorProfiler::JITCompilationFinished(FunctionID functionId, HRESULT hrStatus, BOOL fIsSafeToBlock)
-	{
-		const auto funcName = GetFunctionName(functionId);
-		if (funcName == "Main")
+		const auto functionName = CacheFunction(functionID);
+		if (functionName == "Main")
 			_isAppExecutionStarted = true;
 
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::JITCachedFunctionSearchStarted(FunctionID functionId, BOOL* pbUseCachedFunction)
+	HRESULT CorProfiler::JITCachedFunctionSearchStarted(FunctionID functionID, BOOL* pbUseCachedFunction)
 	{
-		const auto funcName = GetFunctionName(functionId);
-		if (funcName == "Main")
+		const auto functionName = CacheFunction(functionID);
+		if (functionName == "Main")
 			_isAppExecutionStarted = true;
 
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::JITCachedFunctionSearchFinished(FunctionID functionId, COR_PRF_JIT_CACHE result)
+	HRESULT CorProfiler::JITCachedFunctionSearchFinished(FunctionID functionID, COR_PRF_JIT_CACHE result)
 	{
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::JITFunctionPitched(FunctionID functionId)
+	HRESULT CorProfiler::JITFunctionPitched(FunctionID functionID)
 	{
 		return S_OK;
 	}
@@ -234,12 +247,14 @@ namespace MixedCallStackSampleClient
 	HRESULT CorProfiler::ThreadCreated(ThreadID threadId)
 	{
 		_threadsManaged.push_front(threadId);
+
 		return S_OK;
 	}
 
 	STDMETHODIMP CorProfiler::ThreadDestroyed(ThreadID threadId)
 	{
 		_threadsManaged.remove(threadId);
+
 		return S_OK;
 	}
 
@@ -247,6 +262,7 @@ namespace MixedCallStackSampleClient
 	{
 		_threadsM2N[managedThreadId] = osThreadId;
 		_threadsN2M[osThreadId] = managedThreadId;
+
 		return S_OK;
 	}
 
@@ -290,13 +306,17 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::UnmanagedToManagedTransition(FunctionID functionId, COR_PRF_TRANSITION_REASON reason)
+	HRESULT CorProfiler::UnmanagedToManagedTransition(FunctionID functionID, COR_PRF_TRANSITION_REASON reason)
 	{
+		CacheFunction(functionID);
+
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ManagedToUnmanagedTransition(FunctionID functionId, COR_PRF_TRANSITION_REASON reason)
+	HRESULT CorProfiler::ManagedToUnmanagedTransition(FunctionID functionID, COR_PRF_TRANSITION_REASON reason)
 	{
+		CacheFunction(functionID);
+
 		return S_OK;
 	}
 
@@ -341,7 +361,7 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ObjectAllocated(ObjectID objectId, ClassID classId)
+	HRESULT CorProfiler::ObjectAllocated(ObjectID objectId, ClassID classID)
 	{
 		return S_OK;
 	}
@@ -351,7 +371,7 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ObjectReferences(ObjectID objectId, ClassID classId, ULONG cObjectRefs,
+	HRESULT CorProfiler::ObjectReferences(ObjectID objectId, ClassID classID, ULONG cObjectRefs,
 		ObjectID objectRefIds[])
 	{
 		return S_OK;
@@ -367,7 +387,7 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ExceptionSearchFunctionEnter(FunctionID functionId)
+	HRESULT CorProfiler::ExceptionSearchFunctionEnter(FunctionID functionID)
 	{
 		return S_OK;
 	}
@@ -377,7 +397,7 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ExceptionSearchFilterEnter(FunctionID functionId)
+	HRESULT CorProfiler::ExceptionSearchFilterEnter(FunctionID functionID)
 	{
 		return S_OK;
 	}
@@ -387,7 +407,7 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ExceptionSearchCatcherFound(FunctionID functionId)
+	HRESULT CorProfiler::ExceptionSearchCatcherFound(FunctionID functionID)
 	{
 		return S_OK;
 	}
@@ -402,7 +422,7 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ExceptionUnwindFunctionEnter(FunctionID functionId)
+	HRESULT CorProfiler::ExceptionUnwindFunctionEnter(FunctionID functionID)
 	{
 		return S_OK;
 	}
@@ -412,7 +432,7 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ExceptionUnwindFinallyEnter(FunctionID functionId)
+	HRESULT CorProfiler::ExceptionUnwindFinallyEnter(FunctionID functionID)
 	{
 		return S_OK;
 	}
@@ -422,7 +442,7 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ExceptionCatcherEnter(FunctionID functionId, ObjectID objectId)
+	HRESULT CorProfiler::ExceptionCatcherEnter(FunctionID functionID, ObjectID objectId)
 	{
 		return S_OK;
 	}
@@ -512,7 +532,7 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ReJITCompilationStarted(FunctionID functionId, ReJITID rejitId, BOOL fIsSafeToBlock)
+	HRESULT CorProfiler::ReJITCompilationStarted(FunctionID functionID, ReJITID rejitId, BOOL fIsSafeToBlock)
 	{
 		return S_OK;
 	}
@@ -523,13 +543,13 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ReJITCompilationFinished(FunctionID functionId, ReJITID rejitId, HRESULT hrStatus,
+	HRESULT CorProfiler::ReJITCompilationFinished(FunctionID functionID, ReJITID rejitId, HRESULT hrStatus,
 		BOOL fIsSafeToBlock)
 	{
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::ReJITError(ModuleID moduleId, mdMethodDef methodId, FunctionID functionId,
+	HRESULT CorProfiler::ReJITError(ModuleID moduleId, mdMethodDef methodId, FunctionID functionID,
 		HRESULT hrStatus)
 	{
 		return S_OK;
@@ -564,67 +584,181 @@ namespace MixedCallStackSampleClient
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::DynamicMethodJITCompilationStarted(FunctionID functionId, BOOL fIsSafeToBlock,
+	HRESULT CorProfiler::DynamicMethodJITCompilationStarted(FunctionID functionID, BOOL fIsSafeToBlock,
 		LPCBYTE pILHeader, ULONG cbILHeader)
 	{
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::DynamicMethodJITCompilationFinished(FunctionID functionId, HRESULT hrStatus,
+	HRESULT CorProfiler::DynamicMethodJITCompilationFinished(FunctionID functionID, HRESULT hrStatus,
 		BOOL fIsSafeToBlock)
 	{
 		return S_OK;
 	}
 
-	HRESULT CorProfiler::DynamicMethodUnloaded(FunctionID functionId)
+	HRESULT CorProfiler::DynamicMethodUnloaded(FunctionID functionID)
 	{
 		return S_OK;
 	}
 
-	void CorProfiler::GetMixedCallStack(const PCONTEXT context)
+	std::deque<PVOID> CorProfiler::GetMixedCallStack(const FrameRegisters& registers) const
 	{
-		const auto nativeThreadHandle = GetCurrentThread();
-		const auto nativeThreadID = GetCurrentThreadId();
-
-		const auto managedThreadID = GetManagedThreadIdFromNative(nativeThreadID);
-		if (managedThreadID == 0)
-			return;
+		auto callStack = std::deque<PVOID>();
 
 		PVOID firstManagedIP = nullptr;
 		FunctionID firstManagedFuncID = 0;
-		const auto nativeFrames = GetNativeFrames(
-			nativeThreadHandle,
-			context,
-			firstManagedIP,
-			firstManagedFuncID
+		const auto nativeBreakFunc = [this, &firstManagedIP, &firstManagedFuncID](const PVOID address)
+		{
+			FunctionID managedFunction = 0;
+			if (IsFunctionManaged(static_cast<LPCBYTE>(address), managedFunction))
+			{
+				firstManagedIP = address;
+				firstManagedFuncID = managedFunction;
+				return true;
+			}
+			return false;
+		};
+
+		std::deque<PVOID> nativeCallStack = NativeStackWalker::GetNativeCallStack(
+			registers,
+			nativeBreakFunc
 		);
 
-		const auto stackFrames = new std::vector<StackFrame>();
+		std::ranges::copy(nativeCallStack, std::back_inserter(callStack));
+
+		const auto nativeThreadID = GetCurrentThreadId();
+		const auto managedThreadID = GetManagedThreadIdFromNative(nativeThreadID);
+		if (managedThreadID == 0)
+			return callStack;
+
+		CONTEXT context;
+		registers.GetContext(context);
+
+		auto profilerFrames = std::deque<ProfilerFrame>();
 		const HRESULT result = _profilerInfo->DoStackSnapshot(
 			managedThreadID,
 			DoStackSnapshotCallback,
 			COR_PRF_SNAPSHOT_REGISTER_CONTEXT,
-			stackFrames,
-			reinterpret_cast<BYTE*>(context),
+			&profilerFrames,
+			reinterpret_cast<PBYTE>(&context),
 			sizeof(CONTEXT)
 		);
 
-		if (SUCCEEDED(result))
+		if (FAILED(result) || IS_ERROR(result))
 		{
-			// TODO
-		}
-		else
-		{
+#ifdef DEBUG
 			// It is very likely that we have not yet started executing the app.
-			// In this case, we can ignore it.
+			// Otherwise, inform about the error.
+			if (_isAppExecutionStarted)
+				OutputDebugString(_T("ERROR GETTING MANAGED CALL STACK!\n"));
+#endif
 
-			if (!_isAppExecutionStarted)
-				OutputDebugString(_T("App is not started yet"));
+			return callStack;
 		}
 
-		// Cleanup
-		if (stackFrames != nullptr)
-			delete stackFrames;
+		for (const ProfilerFrame& profilerFrame : profilerFrames)
+		{
+			if (profilerFrame.IsManaged)
+			{
+				callStack.push_back(profilerFrame.Registers.AddrPC);
+			}
+			else
+			{
+				firstManagedIP = nullptr;
+				firstManagedFuncID = 0;
+				nativeCallStack = NativeStackWalker::GetNativeCallStack(
+					profilerFrame.Registers,
+					nativeBreakFunc
+				);
+
+				std::ranges::copy(nativeCallStack, std::back_inserter(callStack));
+			}
+		}
+
+		return callStack;
+	}
+
+	bool CorProfiler::IsFunctionManaged(const LPCBYTE address, FunctionID& managedFuncID) const
+	{
+		const HRESULT funcResult = _profilerInfo->GetFunctionFromIP(address, &managedFuncID);
+		return SUCCEEDED(funcResult) && managedFuncID != 0;
+	}
+
+	HRESULT CorProfiler::GetFunctionInfo(
+		const FunctionID funcID,
+		ClassID& classID,
+		ModuleID& moduleID,
+		mdToken& token
+	) const
+	{
+		return _profilerInfo->GetFunctionInfo(funcID, &classID, &moduleID, &token);
+	}
+
+	HRESULT CorProfiler::GetModulePath(const ModuleID moduleID, CString& modulePath) const
+	{
+		const auto itPath = _modulePath.find(moduleID);
+		if (itPath == _modulePath.end())
+		{
+			modulePath = "";
+			return E_FAIL;
+		}
+
+		modulePath = itPath->second;
+		return S_OK;
+	}
+
+	HRESULT CorProfiler::GetModuleBaseAddress(const ModuleID moduleID, LPCBYTE& baseAddress) const
+	{
+		const auto itBaseAddress = _moduleBaseAddress.find(moduleID);
+		if (itBaseAddress == _moduleBaseAddress.end())
+		{
+			baseAddress = nullptr;
+			return E_FAIL;
+		}
+
+		baseAddress = itBaseAddress->second;
+		return S_OK;
+	}
+
+	HRESULT CorProfiler::GetAnnotation(
+		const CString& moduleName,
+		const ClassID classID,
+		const FunctionID functionID,
+		CString& annotation
+	)
+	{
+		annotation = CString();
+
+		if (!moduleName.IsEmpty())
+			annotation.AppendFormat(_T("%s!"), moduleName.GetString());
+
+		const auto className = CacheClass(classID);
+		if (!className.IsEmpty())
+			annotation.AppendFormat(className);
+
+		const auto funcName = CacheFunction(functionID);
+		if (!funcName.IsEmpty())
+		{
+			if (!className.IsEmpty())
+				annotation.AppendFormat(_T(".%s"), funcName.GetString());
+			else
+				annotation.Append(funcName);
+		}
+
+		return S_OK;
+	}
+
+	HRESULT CorProfiler::GetModuleAssemblyID(const ModuleID moduleID, AssemblyID& assemblyID) const
+	{
+		const auto itAssemblyID = _moduleAssemblyID.find(moduleID);
+		if (itAssemblyID == _moduleAssemblyID.end())
+		{
+			assemblyID = 0;
+			return E_FAIL;
+		}
+
+		assemblyID = itAssemblyID->second;
+		return S_OK;
 	}
 
 	HRESULT CorProfiler::SetEventMask() const
@@ -633,52 +767,32 @@ namespace MixedCallStackSampleClient
 			COR_PRF_MONITOR_JIT_COMPILATION |
 			COR_PRF_MONITOR_MODULE_LOADS |
 			COR_PRF_MONITOR_THREADS |
+			COR_PRF_MONITOR_CLASS_LOADS |
 			COR_PRF_ENABLE_STACK_SNAPSHOT;
 
 		return _profilerInfo->SetEventMask(eventMask);
 	}
 
-	HRESULT CorProfiler::GetModuleInfo(ModuleID moduleID, LPCBYTE& baseAddress, CString& moduleName) const
+	HRESULT CorProfiler::GetModuleInfo(
+		const ModuleID moduleID,
+		CString& moduleName,
+		LPCBYTE& baseAddress,
+		AssemblyID& assemblyID
+	) const
 	{
-		LPCBYTE address = nullptr;
 		ULONG nameLength = 0;
 		WCHAR name[ModuleNameMaxLength];
 
 		const HRESULT result = _profilerInfo->GetModuleInfo(
-			moduleID, &address, ModuleNameMaxLength,
-			&nameLength, name, nullptr);
+			moduleID, &baseAddress, ModuleNameMaxLength,
+			&nameLength, name, &assemblyID);
 
-		if (SUCCEEDED(result))
-		{
-			baseAddress = address;
-			moduleName = CString(name);
-		}
-		else
-		{
-			baseAddress = nullptr;
-			moduleName = CString();
-		}
+		moduleName = CString(name);
 
 		return result;
 	}
-
-	HRESULT CorProfiler::GetModuleInfoFromFunctionID(FunctionID funcId, LPCBYTE& baseAddress, CString& moduleName) const
-	{
-		ClassID classId;
-		ModuleID moduleId;
-		mdToken token;
-		HRESULT result = _profilerInfo->GetFunctionInfo(funcId, &classId, &moduleId, &token);
-		if (FAILED(result))
-		{
-			baseAddress = nullptr;
-			moduleName = CString();
-			return S_FALSE;
-		}
-
-		return GetModuleInfo(moduleId, baseAddress, moduleName);
-	}
-
-	ThreadID CorProfiler::GetManagedThreadIdFromNative(DWORD nativeThreadID)
+	
+	ThreadID CorProfiler::GetManagedThreadIdFromNative(const DWORD nativeThreadID) const
 	{
 		const auto managedThreadID = _threadsN2M.find(nativeThreadID);
 		return managedThreadID != _threadsN2M.end()
@@ -686,7 +800,7 @@ namespace MixedCallStackSampleClient
 			: 0;
 	}
 
-	CString CorProfiler::GetFunctionName(const FunctionID funcId)
+	CString CorProfiler::GetFunctionName(const FunctionID funcId) const
 	{
 		// If the FunctionID is 0, we could be dealing with a native function. 
 		if (funcId == 0)
@@ -694,7 +808,7 @@ namespace MixedCallStackSampleClient
 
 		CString name;
 
-		ClassID classId = 0;
+		ClassID classID = 0;
 		ModuleID moduleId = 0;
 		mdToken token = 0;
 		ULONG32 typeArgsLength = 0;
@@ -703,31 +817,34 @@ namespace MixedCallStackSampleClient
 
 		HRESULT hr = S_OK;
 
-		hr = _profilerInfo->GetFunctionInfo2(funcId, frameInfo, &classId, &moduleId, &token,
+		hr = _profilerInfo->GetFunctionInfo2(funcId, frameInfo, &classID, &moduleId, &token,
 			TypeArgsMaxLength, &typeArgsLength, typeArgs);
 		if (FAILED(hr))
-		{
 			return CString();
-		}
 
-		auto mdi = COMPtrHolder<IMetaDataImport>();
-		hr = _profilerInfo->GetModuleMetaData(moduleId, ofRead,
-			IID_IMetaDataImport, reinterpret_cast<IUnknown**>(&mdi));
+		auto itModuleMDI = _moduleMDI.find(moduleId);
+		if (itModuleMDI == _moduleMDI.end())
+			return CString();
+
+		auto& mdi = itModuleMDI->second;
+
+		WCHAR methodName[MethodNameMaxLength];
+		hr = mdi->GetMethodProps(
+			token,
+			nullptr,
+			methodName,
+			MethodNameMaxLength,
+			nullptr,
+			nullptr,
+			nullptr,
+			nullptr,
+			nullptr,
+			nullptr
+		);
 		if (FAILED(hr))
-		{
 			return CString();
-		}
 
-		WCHAR funcName[MethodNameMaxLength];
-		hr = mdi->GetMethodProps(token, nullptr, funcName, MethodNameMaxLength,
-			nullptr, nullptr, nullptr, nullptr, 
-			nullptr, nullptr);
-		if (FAILED(hr))
-		{
-			return CString();
-		}
-
-		name.Append(funcName);
+		name.Append(methodName);
 
 		// Fill in the type parameters of the generic method
 		if (typeArgsLength > 0)
@@ -749,21 +866,18 @@ namespace MixedCallStackSampleClient
 		return name;
 	}
 
-	CString CorProfiler::GetClassIDName(const ClassID classId)
+	CString CorProfiler::GetClassIDName(const ClassID classID) const
 	{
 		ModuleID modId;
 		mdTypeDef classToken;
 		ClassID parentClassID;
 		ULONG32 typeArgsLength;
 		ClassID typeArgs[TypeArgsMaxLength];
-		HRESULT hr = S_OK;
 
-		if (classId == 0)
-		{
+		if (classID == 0)
 			return CString();
-		}
 
-		hr = _profilerInfo->GetClassIDInfo2(classId, &modId, &classToken, &parentClassID,
+		HRESULT hr = _profilerInfo->GetClassIDInfo2(classID, &modId, &classToken, &parentClassID,
 			TypeArgsMaxLength, &typeArgsLength, typeArgs);
 		if (CORPROF_E_CLASSID_IS_ARRAY == hr)
 		{
@@ -781,27 +895,21 @@ namespace MixedCallStackSampleClient
 			return CString("DataIncomplete");
 		}
 		else if (FAILED(hr))
-		{
 			return CString();
-		}
 
-		auto mdi = COMPtrHolder<IMetaDataImport>();
-		hr = _profilerInfo->GetModuleMetaData(modId, (ofRead | ofWrite),
-			IID_IMetaDataImport, reinterpret_cast<IUnknown**>(&mdi));
-		if (FAILED(hr))
-		{
+		const auto itModuleMDI = _moduleMDI.find(modId);
+		if (itModuleMDI == _moduleMDI.end())
 			return CString();
-		}
+
+		auto& mdi = itModuleMDI->second;
 
 		WCHAR wName[TypeDefMaxLength];
 		DWORD dwTypeDefFlags = 0;
+
 		hr = mdi->GetTypeDefProps(classToken, wName, TypeDefMaxLength,
-			nullptr, &dwTypeDefFlags,
-		nullptr);
+			nullptr, &dwTypeDefFlags, nullptr);
 		if (FAILED(hr))
-		{
 			return CString();
-		}
 
 		CString name = wName;
 		if (typeArgsLength > 0)
@@ -823,85 +931,77 @@ namespace MixedCallStackSampleClient
 		return name;
 	}
 
-	void CorProfiler::ReleaseProfilerInfo()
+	CString CorProfiler::CacheClass(const ClassID classID)
 	{
-		if (_profilerInfo != nullptr)
+		const auto itFound = _className.find(classID);
+
+		CString className;
+		if (itFound != _className.end())
 		{
-			_profilerInfo->Release();
-			_profilerInfo = nullptr;
+			className = itFound->second;
 		}
+		else
+		{
+			className = GetClassIDName(classID);
+			if (!className.IsEmpty())
+				_className[classID] = className;
+		}
+
+		return className;
 	}
 
-	std::list<PVOID> CorProfiler::GetNativeFrames(
-		const HANDLE threadHandle,
-		const PCONTEXT context,
-		PVOID& terminatedByIP,
-		FunctionID& terminatedByFuncID
-	) const
+	CString CorProfiler::CacheFunction(const FunctionID functionID)
 	{
-		terminatedByIP = nullptr;
-		terminatedByFuncID = 0;
+		const auto itFound = _functionName.find(functionID);
 
-		std::list<PVOID> stackFrames;
-
-		if (threadHandle == nullptr ||
-			threadHandle == INVALID_HANDLE_VALUE)
-			return stackFrames;
-
-#ifdef _M_IX86
-		stackFrames.push_back(reinterpret_cast<PVOID>(context->Eip));
-
-		DWORD frameAddress = context->Ebp;
-		const auto teb = reinterpret_cast<NT_TIB*>(::NtCurrentTeb());
-		while (
-			((frameAddress & 3) == 0) &&
-			frameAddress + 2 * sizeof(VOID*) < reinterpret_cast<UINT_PTR>(teb->StackBase) &&
-			frameAddress >= reinterpret_cast<UINT_PTR>(teb->StackLimit))
+		CString functionName;
+		if (itFound != _functionName.end())
 		{
-			const UINT_PTR returnAddress = reinterpret_cast<UINT_PTR*>(frameAddress)[1];
-			if (returnAddress == 0)
-				break;
-
-			FunctionID managedFunction = 0;
-			const HRESULT funcResult = _profilerInfo->GetFunctionFromIP(reinterpret_cast<LPCBYTE>(returnAddress), &managedFunction);
-			if (SUCCEEDED(funcResult) && managedFunction != 0)
-			{
-				terminatedByIP = reinterpret_cast<PVOID>(returnAddress);
-				terminatedByFuncID = managedFunction;
-				break;
-			}
-
-			stackFrames.push_back(reinterpret_cast<PVOID>(returnAddress));
-
-			frameAddress = reinterpret_cast<UINT_PTR*>(frameAddress)[0];
+			functionName = itFound->second;
 		}
-#elif  _M_X64
-		CONTEXT newContext;
-		memcpy(&newContext, context, sizeof(CONTEXT));
-
-		DWORD64 ImageBase;
-		PRUNTIME_FUNCTION runtimeFunction;
-		while ((runtimeFunction = RtlLookupFunctionEntry(newContext.Rip, &ImageBase, nullptr)) != nullptr)
+		else
 		{
-			FunctionID managedFunction = 0;
-			const HRESULT funcResult = _profilerInfo->GetFunctionFromIP(reinterpret_cast<LPCBYTE>(newContext.Rip), &managedFunction);
-			if (SUCCEEDED(funcResult) && managedFunction != 0)
-			{
-				terminatedByIP = reinterpret_cast<PVOID>(newContext.Rip);
-				terminatedByFuncID = managedFunction;
-				break;
-			}
-
-			stackFrames.push_back(reinterpret_cast<PVOID>(newContext.Rip));
-
-			PVOID handlerData;
-			ULONG64 establisherFrame;
-			RtlVirtualUnwind(UNW_FLAG_NHANDLER, ImageBase, newContext.Rip,
-				runtimeFunction, &newContext, &handlerData, &establisherFrame, nullptr);
+			functionName = GetFunctionName(functionID);
+			if (!functionName.IsEmpty())
+				_functionName[functionID] = functionName;
 		}
-#endif
 
-		return stackFrames;
+		return functionName;
+	}
+
+	bool CorProfiler::SaveRuntimeInfo()
+	{
+		USHORT clrInstanceId;
+		COR_PRF_RUNTIME_TYPE runtimeType;
+		USHORT majorVersion;
+		USHORT minorVersion;
+		USHORT buildNumber;
+		USHORT qfeVersion;
+		ULONG versionStringLength = 0;
+		WCHAR versionString[100];
+
+		HRESULT hr = _profilerInfo->GetRuntimeInformation(
+			&clrInstanceId,
+			&runtimeType,
+			&majorVersion,
+			&minorVersion,
+			&buildNumber,
+			&qfeVersion,
+			sizeof(versionString) / sizeof(WCHAR),
+			&versionStringLength,
+			versionString
+		);
+
+		if (SUCCEEDED(hr))
+		{
+			_runtimeType = runtimeType;
+			_runtimeVersion = CString(versionString);
+			return true;
+		}
+
+		_runtimeType = COR_PRF_DESKTOP_CLR;
+		_runtimeVersion = CString();
+		return false;
 	}
 
 	HRESULT __stdcall CorProfiler::DoStackSnapshotCallback(
@@ -913,50 +1013,28 @@ namespace MixedCallStackSampleClient
 		void* clientData
 	)
 	{
-		auto stackFrames = static_cast<std::vector<StackFrame>*>(clientData);
-		auto contextData = reinterpret_cast<CONTEXT*>(context);
+		const auto profilerFrames = static_cast<std::deque<ProfilerFrame>*>(clientData);
+		auto contextData = reinterpret_cast<const CONTEXT*>(context);
 
+		const auto registers = FrameRegisters(
 #ifdef _M_IX86
-		DWORD64 addrPC = contextData->Eip;
-		DWORD64 addrFrame = contextData->Ebp;
-		DWORD64 addrStack = contextData->Esp;
+			reinterpret_cast<PVOID>(contextData->Eip),
+			reinterpret_cast<PVOID>(contextData->Ebp),
+			reinterpret_cast<PVOID>(contextData->Esp)
 #elif _M_X64
-		DWORD64 addrPC = ip;
-		DWORD64 addrFrame = contextData->Rbp;
-		DWORD64 addrStack = contextData->Rsp;
+			reinterpret_cast<PVOID>(contextData->Rip),
+			reinterpret_cast<PVOID>(contextData->Rbp),
+			reinterpret_cast<PVOID>(contextData->Rsp)
 #else
 #error "Platform not supported!"
 #endif
+		);
 
-		if (funcId == 0)
-		{
-			// This tells us that this frame is unmanaged
-			stackFrames->push_back(StackFrame(false, addrPC, addrFrame, addrStack));
-			return S_OK;
-		}
+		const bool isManaged = funcId != 0;
 
-		// Here we process the managed frame and save information about
-		// the module from which the function was called
-		// (at the moment I only need information about the module).
+		profilerFrames->push_back(ProfilerFrame(isManaged, registers));
 
-		const auto corProfiler = GlobalData::GetCorProfiler();
-		if (corProfiler == nullptr)
-			return E_FAIL;
-
-		LPCBYTE baseAddress;
-		CString moduleName;
-		const HRESULT result = corProfiler->GetModuleInfoFromFunctionID(funcId, baseAddress, moduleName);
-		if (SUCCEEDED(result))
-		{
-			stackFrames->push_back(StackFrame(true, addrPC, addrFrame, addrStack,
-				moduleName, baseAddress));
-		}
-		else
-		{
-			stackFrames->push_back(StackFrame(true, addrPC, addrFrame, addrStack,
-				CString(), nullptr));
-		}
-
-		return result;
+		return S_OK;
 	}
+
 }

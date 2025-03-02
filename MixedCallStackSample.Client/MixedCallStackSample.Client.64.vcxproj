@@ -16,7 +16,6 @@
     <ProjectGuid>{6fed783f-64ea-4d48-953a-f23d0b772dec}</ProjectGuid>
     <RootNamespace>MixedCallStackSampleClient</RootNamespace>
     <ProjectName>MixedCallStackSample.Client.64</ProjectName>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <WindowsTargetPlatformMinVersion>7.0</WindowsTargetPlatformMinVersion>
   </PropertyGroup>
@@ -69,7 +68,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>corguids.lib;dbghelp.lib;dbgeng.lib;..\lib\Detours\lib.X64\detours.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>..\lib\Detours\lib.X64\detours.lib;corguids.lib;dbghelp.lib;dbgeng.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>MixedCallStackSample.Client.def</ModuleDefinitionFile>
     </Link>
   </ItemDefinitionGroup>
@@ -92,36 +91,39 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>corguids.lib;dbghelp.lib;dbgeng.lib;..\lib\Detours\lib.X64\detours.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>..\lib\Detours\lib.X64\detours.lib;corguids.lib;dbghelp.lib;dbgeng.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ModuleDefinitionFile>MixedCallStackSample.Client.def</ModuleDefinitionFile>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Client.h" />
-    <ClInclude Include="COMPtrHolder.hpp" />
     <ClInclude Include="CorProfiler.h" />
     <ClInclude Include="CorProfilerClassFactory.h" />
+    <ClInclude Include="FrameRegisters.hpp" />
     <ClInclude Include="framework.h" />
-    <ClInclude Include="GlobalData.h" />
+    <ClInclude Include="InstanceManager.h" />
     <ClInclude Include="Interceptor.h" />
     <ClInclude Include="NativeStackWalker.h" />
-    <ClInclude Include="OriginalFunctions.hpp" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="ProcessInfo.hpp" />
+    <ClInclude Include="ProfilerFrame.hpp" />
+    <ClInclude Include="RecursionGuard.hpp" />
     <ClInclude Include="StackFrame.hpp" />
+    <ClInclude Include="StackWalker.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Client.cpp" />
     <ClCompile Include="CorProfiler.cpp" />
     <ClCompile Include="CorProfilerClassFactory.cpp" />
     <ClCompile Include="DllMain.cpp" />
-    <ClCompile Include="GlobalData.cpp" />
+    <ClCompile Include="InstanceManager.cpp" />
     <ClCompile Include="Interceptor.cpp" />
     <ClCompile Include="NativeStackWalker.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="StackWalker.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="MixedCallStackSample.Client.def" />

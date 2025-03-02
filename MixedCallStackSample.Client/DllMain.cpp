@@ -2,7 +2,7 @@
 #include "Client.h"
 #include "Interceptor.h"
 #include "CorProfilerClassFactory.h"
-#include "GlobalData.h"
+#include "InstanceManager.h"
 
 using namespace MixedCallStackSampleClient;
 
@@ -54,5 +54,5 @@ extern "C" HRESULT CALLBACK DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVO
 
 extern "C" HRESULT CALLBACK DllCanUnloadNow()
 {
-    return GlobalData::IsAnyComObjectInUse() ? S_FALSE : S_OK;
+    return InstanceManager::IsAnyComObjectInUse() ? S_FALSE : S_OK;
 }

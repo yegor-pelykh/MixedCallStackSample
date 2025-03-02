@@ -1,50 +1,58 @@
-#pragma once
+﻿#pragma once
 
 namespace MixedCallStackSampleClient
 {
-	class StackFrame final
+	enum class StackFrameType
+	{
+		Native,
+		Managed
+	};
+
+	struct StackFrame final
 	{
 	public:
-		StackFrame(
-			const bool isManaged,
-			const DWORD64 addrPC,
-			const DWORD64 addrFrame,
-			const DWORD64 addrStack,
-			const CString& moduleName,
-			const LPCBYTE& moduleBaseAddress
-		)
+		StackFrame()
+			: Type(StackFrameType::Native)
+			, ReturnAddress(nullptr)
+			, ModuleBaseAddress(nullptr)
+			, ModuleName(_T(""))
+			, ModulePath(_T(""))
+			, Annotation(_T(""))
 		{
-			IsManaged = isManaged;
-			AddrPC = addrPC;
-			AddrFrame = addrFrame;
-			AddrStack = addrStack;
-			ModuleName = moduleName;
-			ModuleBaseAddress = moduleBaseAddress;
 		}
-
-		StackFrame(
-			const bool isManaged,
-			const DWORD64 addrPC,
-			const DWORD64 addrFrame,
-			const DWORD64 addrStack
-		) : StackFrame(
-			isManaged,
-			addrPC,
-			addrFrame,
-			addrStack,
-			CString(),
-			nullptr
-		)
+		StackFrame(const StackFrame& other)
 		{
+			Type = other.Type;
+			ReturnAddress = other.ReturnAddress;
+			ModuleBaseAddress = other.ModuleBaseAddress;
+			ModuleName = other.ModuleName;
+			ModulePath = other.ModulePath;
+			Annotation = other.Annotation;
 		}
 
 	public:
-		bool IsManaged;
-		DWORD64 AddrPC;
-		DWORD64 AddrFrame;
-		DWORD64 AddrStack;
+		StackFrame& operator=(const StackFrame& other)
+		{
+			if (this == &other)
+				return *this;
+
+			Type = other.Type;
+			ReturnAddress = other.ReturnAddress;
+			ModuleBaseAddress = other.ModuleBaseAddress;
+			ModuleName = other.ModuleName;
+			ModulePath = other.ModulePath;
+			Annotation = other.Annotation;
+
+			return *this;
+		}
+
+	public:
+		StackFrameType Type;
+		PVOID ReturnAddress;
+		PVOID ModuleBaseAddress;
 		CString ModuleName;
-		LPCBYTE ModuleBaseAddress;
+		CString ModulePath;
+		CString Annotation;
 
 	};
 }

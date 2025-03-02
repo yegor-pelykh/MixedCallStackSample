@@ -1,5 +1,5 @@
 #pragma once
-#include "StackFrame.hpp"
+#include "FrameRegisters.hpp"
 
 namespace MixedCallStackSampleClient
 {
@@ -28,16 +28,16 @@ namespace MixedCallStackSampleClient
 		HRESULT STDMETHODCALLTYPE ModuleUnloadStarted(ModuleID moduleId) override;
 		HRESULT STDMETHODCALLTYPE ModuleUnloadFinished(ModuleID moduleId, HRESULT hrStatus) override;
 		HRESULT STDMETHODCALLTYPE ModuleAttachedToAssembly(ModuleID moduleId, AssemblyID AssemblyId) override;
-		HRESULT STDMETHODCALLTYPE ClassLoadStarted(ClassID classId) override;
-		HRESULT STDMETHODCALLTYPE ClassLoadFinished(ClassID classId, HRESULT hrStatus) override;
-		HRESULT STDMETHODCALLTYPE ClassUnloadStarted(ClassID classId) override;
-		HRESULT STDMETHODCALLTYPE ClassUnloadFinished(ClassID classId, HRESULT hrStatus) override;
-		HRESULT STDMETHODCALLTYPE FunctionUnloadStarted(FunctionID functionId) override;
-		HRESULT STDMETHODCALLTYPE JITCompilationStarted(FunctionID functionId, BOOL fIsSafeToBlock) override;
-		HRESULT STDMETHODCALLTYPE JITCompilationFinished(FunctionID functionId, HRESULT hrStatus, BOOL fIsSafeToBlock) override;
-		HRESULT STDMETHODCALLTYPE JITCachedFunctionSearchStarted(FunctionID functionId, BOOL* pbUseCachedFunction) override;
-		HRESULT STDMETHODCALLTYPE JITCachedFunctionSearchFinished(FunctionID functionId, COR_PRF_JIT_CACHE result) override;
-		HRESULT STDMETHODCALLTYPE JITFunctionPitched(FunctionID functionId) override;
+		HRESULT STDMETHODCALLTYPE ClassLoadStarted(ClassID classID) override;
+		HRESULT STDMETHODCALLTYPE ClassLoadFinished(ClassID classID, HRESULT hrStatus) override;
+		HRESULT STDMETHODCALLTYPE ClassUnloadStarted(ClassID classID) override;
+		HRESULT STDMETHODCALLTYPE ClassUnloadFinished(ClassID classID, HRESULT hrStatus) override;
+		HRESULT STDMETHODCALLTYPE FunctionUnloadStarted(FunctionID functionID) override;
+		HRESULT STDMETHODCALLTYPE JITCompilationStarted(FunctionID functionID, BOOL fIsSafeToBlock) override;
+		HRESULT STDMETHODCALLTYPE JITCompilationFinished(FunctionID functionID, HRESULT hrStatus, BOOL fIsSafeToBlock) override;
+		HRESULT STDMETHODCALLTYPE JITCachedFunctionSearchStarted(FunctionID functionID, BOOL* pbUseCachedFunction) override;
+		HRESULT STDMETHODCALLTYPE JITCachedFunctionSearchFinished(FunctionID functionID, COR_PRF_JIT_CACHE result) override;
+		HRESULT STDMETHODCALLTYPE JITFunctionPitched(FunctionID functionID) override;
 		HRESULT STDMETHODCALLTYPE JITInlining(FunctionID callerId, FunctionID calleeId, BOOL* pfShouldInline) override;
 		HRESULT STDMETHODCALLTYPE ThreadCreated(ThreadID threadId) override;
 		HRESULT STDMETHODCALLTYPE ThreadDestroyed(ThreadID threadId) override;
@@ -50,8 +50,8 @@ namespace MixedCallStackSampleClient
 		HRESULT STDMETHODCALLTYPE RemotingServerInvocationStarted() override;
 		HRESULT STDMETHODCALLTYPE RemotingServerInvocationReturned() override;
 		HRESULT STDMETHODCALLTYPE RemotingServerSendingReply(GUID* pCookie, BOOL fIsAsync) override;
-		HRESULT STDMETHODCALLTYPE UnmanagedToManagedTransition(FunctionID functionId, COR_PRF_TRANSITION_REASON reason) override;
-		HRESULT STDMETHODCALLTYPE ManagedToUnmanagedTransition(FunctionID functionId, COR_PRF_TRANSITION_REASON reason) override;
+		HRESULT STDMETHODCALLTYPE UnmanagedToManagedTransition(FunctionID functionID, COR_PRF_TRANSITION_REASON reason) override;
+		HRESULT STDMETHODCALLTYPE ManagedToUnmanagedTransition(FunctionID functionID, COR_PRF_TRANSITION_REASON reason) override;
 		HRESULT STDMETHODCALLTYPE RuntimeSuspendStarted(COR_PRF_SUSPEND_REASON suspendReason) override;
 		HRESULT STDMETHODCALLTYPE RuntimeSuspendFinished() override;
 		HRESULT STDMETHODCALLTYPE RuntimeSuspendAborted() override;
@@ -61,24 +61,24 @@ namespace MixedCallStackSampleClient
 		HRESULT STDMETHODCALLTYPE RuntimeThreadResumed(ThreadID threadId) override;
 		HRESULT STDMETHODCALLTYPE MovedReferences(ULONG cMovedObjectIDRanges, ObjectID oldObjectIDRangeStart[],
 			ObjectID newObjectIDRangeStart[], ULONG cObjectIDRangeLength[]) override;
-		HRESULT STDMETHODCALLTYPE ObjectAllocated(ObjectID objectId, ClassID classId) override;
+		HRESULT STDMETHODCALLTYPE ObjectAllocated(ObjectID objectId, ClassID classID) override;
 		HRESULT STDMETHODCALLTYPE ObjectsAllocatedByClass(ULONG cClassCount, ClassID classIds[], ULONG cObjects[]) override;
-		HRESULT STDMETHODCALLTYPE ObjectReferences(ObjectID objectId, ClassID classId, ULONG cObjectRefs,
+		HRESULT STDMETHODCALLTYPE ObjectReferences(ObjectID objectId, ClassID classID, ULONG cObjectRefs,
 			ObjectID objectRefIds[]) override;
 		HRESULT STDMETHODCALLTYPE RootReferences(ULONG cRootRefs, ObjectID rootRefIds[]) override;
 		HRESULT STDMETHODCALLTYPE ExceptionThrown(ObjectID thrownObjectId) override;
-		HRESULT STDMETHODCALLTYPE ExceptionSearchFunctionEnter(FunctionID functionId) override;
+		HRESULT STDMETHODCALLTYPE ExceptionSearchFunctionEnter(FunctionID functionID) override;
 		HRESULT STDMETHODCALLTYPE ExceptionSearchFunctionLeave() override;
-		HRESULT STDMETHODCALLTYPE ExceptionSearchFilterEnter(FunctionID functionId) override;
+		HRESULT STDMETHODCALLTYPE ExceptionSearchFilterEnter(FunctionID functionID) override;
 		HRESULT STDMETHODCALLTYPE ExceptionSearchFilterLeave() override;
-		HRESULT STDMETHODCALLTYPE ExceptionSearchCatcherFound(FunctionID functionId) override;
+		HRESULT STDMETHODCALLTYPE ExceptionSearchCatcherFound(FunctionID functionID) override;
 		HRESULT STDMETHODCALLTYPE ExceptionOSHandlerEnter(UINT_PTR __unused) override;
 		HRESULT STDMETHODCALLTYPE ExceptionOSHandlerLeave(UINT_PTR __unused) override;
-		HRESULT STDMETHODCALLTYPE ExceptionUnwindFunctionEnter(FunctionID functionId) override;
+		HRESULT STDMETHODCALLTYPE ExceptionUnwindFunctionEnter(FunctionID functionID) override;
 		HRESULT STDMETHODCALLTYPE ExceptionUnwindFunctionLeave() override;
-		HRESULT STDMETHODCALLTYPE ExceptionUnwindFinallyEnter(FunctionID functionId) override;
+		HRESULT STDMETHODCALLTYPE ExceptionUnwindFinallyEnter(FunctionID functionID) override;
 		HRESULT STDMETHODCALLTYPE ExceptionUnwindFinallyLeave() override;
-		HRESULT STDMETHODCALLTYPE ExceptionCatcherEnter(FunctionID functionId, ObjectID objectId) override;
+		HRESULT STDMETHODCALLTYPE ExceptionCatcherEnter(FunctionID functionID, ObjectID objectId) override;
 		HRESULT STDMETHODCALLTYPE ExceptionCatcherLeave() override;
 		HRESULT STDMETHODCALLTYPE COMClassicVTableCreated(ClassID wrappedClassId, const GUID& implementedIID, void* pVTable,
 			ULONG cSlots) override;
@@ -99,12 +99,12 @@ namespace MixedCallStackSampleClient
 		HRESULT STDMETHODCALLTYPE InitializeForAttach(IUnknown* pCorProfilerInfoUnk, void* pvClientData, UINT cbClientData) override;
 		HRESULT STDMETHODCALLTYPE ProfilerAttachComplete() override;
 		HRESULT STDMETHODCALLTYPE ProfilerDetachSucceeded() override;
-		HRESULT STDMETHODCALLTYPE ReJITCompilationStarted(FunctionID functionId, ReJITID rejitId, BOOL fIsSafeToBlock) override;
+		HRESULT STDMETHODCALLTYPE ReJITCompilationStarted(FunctionID functionID, ReJITID rejitId, BOOL fIsSafeToBlock) override;
 		HRESULT STDMETHODCALLTYPE GetReJITParameters(ModuleID moduleId, mdMethodDef methodId,
 			ICorProfilerFunctionControl* pFunctionControl) override;
-		HRESULT STDMETHODCALLTYPE ReJITCompilationFinished(FunctionID functionId, ReJITID rejitId, HRESULT hrStatus,
+		HRESULT STDMETHODCALLTYPE ReJITCompilationFinished(FunctionID functionID, ReJITID rejitId, HRESULT hrStatus,
 			BOOL fIsSafeToBlock) override;
-		HRESULT STDMETHODCALLTYPE ReJITError(ModuleID moduleId, mdMethodDef methodId, FunctionID functionId,
+		HRESULT STDMETHODCALLTYPE ReJITError(ModuleID moduleId, mdMethodDef methodId, FunctionID functionID,
 			HRESULT hrStatus) override;
 		HRESULT STDMETHODCALLTYPE MovedReferences2(ULONG cMovedObjectIDRanges, ObjectID oldObjectIDRangeStart[],
 			ObjectID newObjectIDRangeStart[], SIZE_T cObjectIDRangeLength[]) override;
@@ -115,29 +115,46 @@ namespace MixedCallStackSampleClient
 		HRESULT STDMETHODCALLTYPE GetAssemblyReferences(const WCHAR* wszAssemblyPath,
 			ICorProfilerAssemblyReferenceProvider* pAsmRefProvider) override;
 		HRESULT STDMETHODCALLTYPE ModuleInMemorySymbolsUpdated(ModuleID moduleId) override;
-		HRESULT STDMETHODCALLTYPE DynamicMethodJITCompilationStarted(FunctionID functionId, BOOL fIsSafeToBlock,
+		HRESULT STDMETHODCALLTYPE DynamicMethodJITCompilationStarted(FunctionID functionID, BOOL fIsSafeToBlock,
 			LPCBYTE pILHeader, ULONG cbILHeader) override;
-		HRESULT STDMETHODCALLTYPE DynamicMethodJITCompilationFinished(FunctionID functionId, HRESULT hrStatus,
+		HRESULT STDMETHODCALLTYPE DynamicMethodJITCompilationFinished(FunctionID functionID, HRESULT hrStatus,
 			BOOL fIsSafeToBlock) override;
-		HRESULT STDMETHODCALLTYPE DynamicMethodUnloaded(FunctionID functionId) override;
+		HRESULT STDMETHODCALLTYPE DynamicMethodUnloaded(FunctionID functionID) override;
 
 	public:
-		void GetMixedCallStack(const PCONTEXT context);
+		std::deque<PVOID> GetMixedCallStack(const FrameRegisters& registers) const;
+		bool IsFunctionManaged(const LPCBYTE address, FunctionID& managedFuncID) const;
+		HRESULT GetFunctionInfo(
+			const FunctionID funcID,
+			ClassID& classID,
+			ModuleID& moduleID,
+			mdToken& token
+		) const;
+		HRESULT GetModulePath(const ModuleID moduleID, CString& modulePath) const;
+		HRESULT GetModuleBaseAddress(const ModuleID moduleID, LPCBYTE& baseAddress) const;
+		HRESULT GetModuleAssemblyID(const ModuleID moduleID, AssemblyID& assemblyID) const;
+		HRESULT GetAnnotation(
+			const CString& moduleName,
+			const ClassID classID,
+			const FunctionID functionID,
+			CString& annotation
+		);
 
 	private:
 		HRESULT SetEventMask() const;
-		HRESULT GetModuleInfo(ModuleID moduleID, LPCBYTE& baseAddress, CString& moduleName) const;
-		HRESULT GetModuleInfoFromFunctionID(FunctionID funcId, LPCBYTE& baseAddress, CString& moduleName) const;
-		ThreadID GetManagedThreadIdFromNative(DWORD nativeThreadId);
-		CString GetFunctionName(FunctionID funcId);
-		CString GetClassIDName(ClassID classId);
-		void ReleaseProfilerInfo();
-		std::list<PVOID> GetNativeFrames(
-			const HANDLE threadHandle,
-			const PCONTEXT context,
-			PVOID& terminatedByIP,
-			FunctionID& terminatedByFuncID
+		HRESULT GetModuleInfo(
+			const ModuleID moduleID,
+			CString& moduleName,
+			LPCBYTE& baseAddress,
+			AssemblyID& assemblyID
 		) const;
+		ThreadID GetManagedThreadIdFromNative(DWORD nativeThreadId) const;
+		CString GetFunctionName(FunctionID funcId) const;
+		CString GetClassIDName(ClassID classID) const;
+		CString CacheClass(ClassID classID);
+		CString CacheFunction(FunctionID functionID);
+		bool SaveRuntimeInfo();
+		/* bool LoadFrameworkLibraries(); */
 
 	private:
 		static HRESULT __stdcall DoStackSnapshotCallback(FunctionID funcId,
@@ -146,13 +163,19 @@ namespace MixedCallStackSampleClient
 
 	private:
 		std::atomic<long> _refCount;
-		ICorProfilerInfo8* _profilerInfo;
+		CComPtr<ICorProfilerInfo8> _profilerInfo;
 		bool _isAppExecutionStarted;
-		std::map<ModuleID, CString> _moduleName;
+		std::map<ModuleID, CString> _modulePath;
 		std::map<ModuleID, LPCBYTE> _moduleBaseAddress;
+		std::map<ModuleID, AssemblyID> _moduleAssemblyID;
+		std::map<ModuleID, CComPtr<IMetaDataImport>> _moduleMDI;
+		std::map<ClassID, CString> _className;
+		std::map<FunctionID, CString> _functionName;
 		std::list<ThreadID> _threadsManaged;
 		std::map<ThreadID, DWORD> _threadsM2N;
 		std::map<DWORD, ThreadID> _threadsN2M;
+		COR_PRF_RUNTIME_TYPE _runtimeType;
+		CString _runtimeVersion;
 
 	};
 

@@ -1,4 +1,5 @@
 #pragma once
+#include "FrameRegisters.hpp"
 
 namespace MixedCallStackSampleClient
 {
@@ -7,10 +8,25 @@ namespace MixedCallStackSampleClient
 	public:
 		static void Load();
 		static void Unload();
-		static bool IsCalledFromThisModule();
-		static HRESULT AnnotateStack(const std::list<PVOID>& ipStack, std::list<CString>& annotationStack);
-		static HRESULT AnnotateIP(const PVOID ip, CString& annotation);
-		static DWORD64 GetNextEIP(HANDLE threadHandle, DWORD64 addrPC, DWORD64 addrFrame, DWORD64 addrStack, int skip);
+		static PVOID GetSymbolFromAddress(const CONTEXT& context);
+		static PVOID GetSymbolFromAddress(const PVOID address);
+		static std::deque<PVOID> GetNativeCallStack(
+			const FrameRegisters& registers,
+			[[maybe_unused]] const std::function<bool(const PVOID)>& breakFunc = nullptr
+		);
+		static HRESULT GetModuleBaseAddress(
+			const PVOID address,
+			DWORD64& moduleBaseAddress
+		);
+		static HRESULT GetModuleInfo(
+			const DWORD64 moduleBaseAddress,
+			IMAGEHLP_MODULE64& moduleInfo
+		);
+		static HRESULT GetAnnotation(
+			const DWORD64 address,
+			const CString& moduleName,
+			CString& annotation
+		);
 
 	private:
 		inline static HANDLE _processHandle = nullptr;

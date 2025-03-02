@@ -4,7 +4,7 @@ namespace MixedCallStackSampleClient
 {
 	class CorProfiler;
 
-	class GlobalData final
+	class InstanceManager final
 	{
 	public:
 		static void SetCorProfiler(CorProfiler* profiler);
@@ -14,7 +14,8 @@ namespace MixedCallStackSampleClient
 		static bool IsAnyComObjectInUse() { return _comObjectsInUse.load() != 0; }
 
 	public:
-		[[nodiscard]] static CorProfiler* GetCorProfiler() { return _profiler; }
+		[[nodiscard]]
+		static CorProfiler* GetCorProfiler() { return _profiler; }
 	
 	private:
 		inline static CorProfiler* _profiler = nullptr;
