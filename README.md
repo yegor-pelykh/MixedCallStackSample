@@ -52,7 +52,7 @@ We welcome contributions to the project! If you have suggestions or improvements
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [**LICENSE**](/LICENSE) file for details.
 
 ## Acknowledgments
 
